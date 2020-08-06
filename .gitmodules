@@ -1,0 +1,3 @@
+[submodule "Packages/UnityExt Core"]
+	path = Packages/UnityExt Core
+	url = https://github.com/UnityExt/Core
