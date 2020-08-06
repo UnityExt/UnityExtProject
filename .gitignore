@@ -1,0 +1,15 @@
+*._*
+unity.userprefs
+PATCH*/
+_work/
+.vs/
+.vscode/.browse.VC.db
+.vscode/launch.json
+*.csproj
+*.user
+*.sln
+Library/
+MemoryCaptures/
+Temp/
+obj/
+Logs/
