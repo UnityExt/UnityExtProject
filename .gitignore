@@ -1,5 +1,7 @@
 *._*
+
 unity.userprefs
+
 PATCH*/
 _work/
 .vs/
@@ -13,3 +15,6 @@ MemoryCaptures/
 Temp/
 obj/
 Logs/
+
+Documentation/build/
+Documentation/*.log
