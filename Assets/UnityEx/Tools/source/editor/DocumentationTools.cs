@@ -38,80 +38,172 @@ namespace UnityExt.Tools {
         static public string docfxBuildFolder    = $"{docfxRoot}_site/";
 
         /// <summary>
+        /// Target build folder bane.
+        /// </summary>
+        static public string docfxBuildTargetFolder  = $"unityext.github.io";
+
+        /// <summary>
         /// Path to the docfx target build folder
         /// </summary>
-        static public string docfxBuildTargetFolder    = $"{docfxRoot}build/";
+        static public string docfxBuildTargetPath    = $"{docfxRoot}{docfxBuildTargetFolder}/";
+
+        /// <summary>
+        /// Internals.
+        /// </summary>
+        static float  m_build_progress;
+        static string m_build_step;
+        static bool   m_build_cancel;
 
         /// <summary>
         /// Builds the documentation (windows only).
         /// </summary>
         #if UNITY_EDITOR_WIN
-        [MenuItem("File/Build UnityExt Documentation",false,207)]
+        [MenuItem("UnityExt/Documentation/Build")]
         #endif
-        static public void Build() {
+        static async public void Build() {
 
             System.Diagnostics.Process proc;            
             System.Diagnostics.ProcessStartInfo proc_info;
             string  args;
+            System.Threading.Tasks.Task tsk;
+
+            m_build_progress = 0f;
+            m_build_step     = "";
+            m_build_cancel   = false;
+            EditorApplication.CallbackFunction on_build_loop = null;
+
+            on_build_loop = 
+            delegate() {                
+                if(m_build_cancel || (m_build_progress>=1f))       { EditorApplication.update -= on_build_loop; EditorUtility.ClearProgressBar();  return; }                
+                m_build_cancel = EditorUtility.DisplayCancelableProgressBar("Building UnityExt Docs",m_build_step,m_build_progress);
+            };
+
+            //Start feedback loop
+            EditorApplication.update += on_build_loop;
 
             args = string.Join(" ",
-            new string[] {                
+            new string[] { 
+                //Command
                 "metadata",
+                //Target project
                 $"\"{docfxProjectJson}\"",
+                //Force rebuild
                 "-f",
+                //Use /// comment data
                 "--raw",
+                //Logging
                 $"-l {docfxRoot}docfx-metadata-result.log --loglevel Verbose"
             });
 
-            Debug.Log($"DocumentationTools> Build / Calling Metadata\n{docfxExecutablePath} {args}");
-            
-            proc_info = new System.Diagnostics.ProcessStartInfo(docfxExecutablePath,args);            
-            proc      = System.Diagnostics.Process.Start(proc_info);
-            proc.WaitForExit();
+            m_build_progress = 0f;
+            m_build_step     = "Generating Metadata";
 
-            Debug.Log($"DocumentationTools> Build / Metadata Complete!");
+            tsk = new System.Threading.Tasks.Task(delegate() { 
+                proc_info = new System.Diagnostics.ProcessStartInfo(docfxExecutablePath,args);
+                proc_info.UseShellExecute = false;
+                proc_info.CreateNoWindow  = true;
+                proc      = System.Diagnostics.Process.Start(proc_info);
+                proc.WaitForExit();
+            });
+            tsk.Start();
+            await tsk;
+
+            if(m_build_cancel) return;
 
             args = string.Join(" ",
-            new string[] {                
+            new string[] {    
+                //Command
                 "build",
+                //Project source
                 $"\"{docfxProjectJson}\"",
+                //Output folder
                 $"-o \"{docfxRoot}\"",
-                "-f",                
+                //Force to rebuild
+                "-f",     
+                //Template
+                "-t templates/default,templates/unity",
+                //Logging
                 $"-l {docfxRoot}docfx-build-result.log --loglevel Verbose"
             });
 
-            Debug.Log($"DocumentationTools> Build / Starting Build\n{docfxExecutablePath} {args}");
+            
+            m_build_progress = 0.25f;
+            m_build_step     = "Building Docs";
 
-            proc_info = new System.Diagnostics.ProcessStartInfo(docfxExecutablePath,args);            
-            proc      = System.Diagnostics.Process.Start(proc_info);
-            proc.WaitForExit();
+            tsk = new System.Threading.Tasks.Task(delegate() {             
+                proc_info = new System.Diagnostics.ProcessStartInfo(docfxExecutablePath,args);            
+                proc_info.UseShellExecute = false;
+                proc_info.CreateNoWindow  = true;
+                proc      = System.Diagnostics.Process.Start(proc_info);
+                proc.WaitForExit();
+            });
+            tsk.Start();
+            await tsk;
 
-            Debug.Log($"DocumentationTools> Build / Complete!");
+            if(m_build_cancel) return;
+
+            m_build_progress = 0.5f;
+            m_build_step     = "Cleanup";
+
+            //UI wait
+            await System.Threading.Tasks.Task.Delay(1500);
 
             string[] build_files;
-            
+
             //Delete old files if exists.           
-            if(Directory.Exists(docfxBuildTargetFolder)) {
-                build_files = Directory.GetFiles(docfxBuildTargetFolder,"*", SearchOption.AllDirectories);
-                for(int i=0;i<build_files.Length;i++) File.Delete(build_files[i]);
+            if(Directory.Exists(docfxBuildTargetPath)) {
+                //Debug.Log($"DocumentationTools> Build / Cleaning [{docfxBuildTargetPath}]");
+                //Files to ignore deletion.
+                List<string> ignore_files = new List<string>(){ 
+                    ".git",
+                    "license",
+                    "cname"
+                };
+                build_files = Directory.GetFiles(docfxBuildTargetPath,"*", SearchOption.AllDirectories);
+                for(int i = 0; i<build_files.Length; i++) {
+                    FileInfo fi = new FileInfo(build_files[i]);
+                    //Ignore missing
+                    if(!fi.Exists) continue;
+                    //Ignored files
+                    if(ignore_files.Contains(fi.Name.ToLower())) continue;                    
+                    fi.Delete();
+                }
             }
             else {
+                //Debug.Log($"DocumentationTools> Build / Creating [{docfxBuildTargetPath}]");
                 //Create if fresh build
-                Directory.CreateDirectory(docfxBuildTargetFolder);
+                Directory.CreateDirectory(docfxBuildTargetPath);
             }            
+
+            if(m_build_cancel) return;
+
+            m_build_progress = 0.75f;
+            m_build_step     = "Moving Files";
+
+            //UI wait
+            await System.Threading.Tasks.Task.Delay(1500);
+
             //Fetch new build files and move them
             build_files = Directory.GetFiles(docfxBuildFolder,"*", SearchOption.AllDirectories);
             for(int i = 0; i<build_files.Length; i++) {
                 string fn = build_files[i];
                 //Replace _site folder by 'build'
-                fn = fn.Replace("_site","build");
+                fn = fn.Replace("_site",docfxBuildTargetFolder);                
                 File.Move(build_files[i],fn);
             }
             //Delete empty '_site' folder
             Directory.Delete(docfxBuildFolder,true);
 
-        }
+            m_build_progress = 0.99f;
+            m_build_step     = "Complete";
 
+            //UI wait
+            await System.Threading.Tasks.Task.Delay(800);
+
+            Debug.Log($"DocumentationTools> Build / Complete!");
+            m_build_progress = 1f;
+            
+        }
 
 
     }

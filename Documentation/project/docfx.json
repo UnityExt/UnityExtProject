@@ -53,9 +53,7 @@
     "dest": "_site",
     "globalMetadataFiles": [],
     "fileMetadataFiles": [],
-    "template": [
-      "default"
-    ],
+    "template": ["templates/default","templates/unity"],
     "postProcessors": [],
     "markdownEngineName": "markdig",
     "noLangKeyword": false,
