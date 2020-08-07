@@ -1,4 +1,4 @@
-# Unity Extension API
+# Manual
 This project is aimed to expand and improve existing Unity API as well create extra functionality that can dramatically improve developers quality of life.
 
 ## Packages

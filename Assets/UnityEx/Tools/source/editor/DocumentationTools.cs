@@ -8,6 +8,10 @@ namespace UnityExt.Tools {
 
     /// <summary>
     /// Auxiliary class to make DocFX calls and generate the documentation for the UnityExt project.
+    /// References:
+    /// https://dotnet.github.io/docfx/tutorial/docfx_getting_started.html
+    /// https://dotnet.github.io/docfx/tutorial/intro_template.html
+    /// https://dotnet.github.io/docfx/templates-and-plugins/templates-dashboard.html
     /// </summary>
     public class DocumentationTools {
     
@@ -35,12 +39,17 @@ namespace UnityExt.Tools {
         /// <summary>
         /// Path to the docfx resulting build folder
         /// </summary>
-        static public string docfxBuildFolder    = $"{docfxRoot}_site/";
+        static public string docfxBuildTempFolder    = $"build-temp";
 
         /// <summary>
         /// Target build folder bane.
         /// </summary>
         static public string docfxBuildTargetFolder  = $"unityext.github.io";
+
+        /// <summary>
+        /// Path to the docfx resulting build folder
+        /// </summary>
+        static public string docfxBuildTempPath      = $"{docfxRoot}{docfxBuildTempFolder}/";
 
         /// <summary>
         /// Path to the docfx target build folder
@@ -184,15 +193,15 @@ namespace UnityExt.Tools {
             await System.Threading.Tasks.Task.Delay(1500);
 
             //Fetch new build files and move them
-            build_files = Directory.GetFiles(docfxBuildFolder,"*", SearchOption.AllDirectories);
+            build_files = Directory.GetFiles(docfxBuildTempPath,"*", SearchOption.AllDirectories);
             for(int i = 0; i<build_files.Length; i++) {
                 string fn = build_files[i];
-                //Replace _site folder by 'build'
-                fn = fn.Replace("_site",docfxBuildTargetFolder);                
+                //Replace 'build-temp' folder by 'build'
+                fn = fn.Replace(docfxBuildTempFolder,docfxBuildTargetFolder);                
                 File.Move(build_files[i],fn);
             }
-            //Delete empty '_site' folder
-            Directory.Delete(docfxBuildFolder,true);
+            //Delete empty 'build-temp' folder
+            Directory.Delete(docfxBuildTempPath,true);
 
             m_build_progress = 0.99f;
             m_build_step     = "Complete";

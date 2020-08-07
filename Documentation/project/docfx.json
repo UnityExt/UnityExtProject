@@ -50,8 +50,14 @@
         ]
       }
     ],
-    "dest": "_site",
+    "dest": "build-temp",
     "globalMetadataFiles": [],
+    "globalMetadata": {
+      "_appTitle":       "UnityExt API",
+      "_appFooter":      "UnityExt API <b><span style=\"color:#00f\">/</span></b> 2020",
+      "_appFaviconPath": "favicon.png",
+      "_appLogoPath":    "logo.png"
+    },
     "fileMetadataFiles": [],
     "template": ["templates/default","templates/unity"],
     "postProcessors": [],
