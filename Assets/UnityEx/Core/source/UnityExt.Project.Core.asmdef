@@ -1,0 +1,14 @@
+{
+    "name": "UnityExt.Project.Core",
+    "references": [
+        "UnityExt.Core"
+    ],
+    "optionalUnityReferences": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": []
+}

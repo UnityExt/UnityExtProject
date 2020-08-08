@@ -1,0 +1,4 @@
+- name: Manual
+  href: ../toc.yml
+- name: Documentation
+  href: ../api/toc.yml

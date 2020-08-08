@@ -15,6 +15,8 @@ namespace UnityExt.Tools {
     /// </summary>
     public class DocumentationTools {
     
+        //docfx.exe pdf project/docfx.json --name unityext-documentation -o ./unityext.github.io/pdf/ -t templates/pdf.default
+
         /// <summary>
         /// Documentation root.
         /// </summary>
