@@ -4,12 +4,76 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityExt.Core;
 
-namespace UnityEx.Core.Examples {
+namespace UnityExt.Core.Examples {
 
     /// <summary>
     /// Perform a few examples of activity usage.
     /// </summary>
     public class ExampleActivity : MonoBehaviour {
+
+        #region class Rotator
+        /// <summary>
+        /// Base class that can support different interfaces
+        /// </summary>
+        public class Rotator : ActivityBehaviour {
+            /// <summary>
+            /// Rotation speed
+            /// </summary>
+            public Vector3 speed;
+            /// <summary>
+            /// Current angle
+            /// </summary>
+            public Vector3 angle;
+            /// <summary>
+            /// Last time
+            /// </summary>
+            private double m_last_time;                        
+            private Transform m_tcache;
+            private bool m_wait;
+            static System.Diagnostics.Stopwatch m_clk;
+            double clk_time { get { return (((double)m_clk.ElapsedMilliseconds)/1000.0);  } }
+            /// <summary>
+            /// CTOR
+            /// </summary>
+            protected void Awake() {
+                if(m_clk==null) { m_clk = new System.Diagnostics.Stopwatch(); m_clk.Start(); }
+                m_last_time = 0f;
+                m_tcache    = transform;
+            }
+            /// <summary>
+            /// Steps the rotation
+            /// </summary>
+            public void Step() {
+                if(m_wait) return;
+                double dt = clk_time - m_last_time;                                                                
+                m_last_time = clk_time;
+                //Super slow stepping
+                for(int i=0;i<200;i++) angle += speed * (float)(dt/200.0);
+                m_wait = true;
+            }
+            /// <summary>
+            /// Applies the rotation.
+            /// </summary>
+            public void Apply() {                
+                if(m_tcache) m_tcache.localEulerAngles = angle;
+                m_wait=false;
+            }
+        }
+
+        /// <summary>
+        /// Rotator that runs inside the unity thread
+        /// </summary>
+        public class MonoRotator : Rotator, IUpdateable {  public void OnUpdate() { Step(); Apply(); } }
+
+        /// <summary>
+        /// Rotator that runs inside a thread and applies the result in the unity thread.
+        /// </summary>
+        public class ThreadRotator : Rotator, IUpdateable, IThreadUpdateable {  
+            public void OnThreadUpdate() { Step();  }
+            public void OnUpdate()       { Apply(); } 
+        }
+
+        #endregion
 
         #region enum CaseTypeFlag
 
@@ -21,6 +85,8 @@ namespace UnityEx.Core.Examples {
             Await,
             Rotation,
             RotationThreaded,
+            RotationBatch,
+            RotationBatchThreaded,
         }
 
         #endregion
@@ -84,9 +150,7 @@ namespace UnityEx.Core.Examples {
                 #region Rotation
                 //Simple activity loop rotating a cube
                 case CaseTypeFlag.Rotation:  {
-                    GameObject cube_target = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    cube_target.transform.parent = content ? content : transform;
-                    cube_target.name = "cube";
+                    GameObject cube_target = CreatePrimitive(PrimitiveType.Cube,"cube",Vector3.zero,Vector3.one);
                     float rotation_angle = 0f;
                     Activity.Run("rotator-activity-example",
                     delegate(Activity a) { 
@@ -101,9 +165,7 @@ namespace UnityEx.Core.Examples {
                 #region RotationThreaded
                 //Simple activity loop rotating a cube in a thread and applying current state in the main thread.
                 case CaseTypeFlag.RotationThreaded:  {
-                    GameObject cube_target = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    cube_target.transform.parent = content ? content : transform;
-                    cube_target.name = "cube";
+                    GameObject cube_target = CreatePrimitive(PrimitiveType.Cube,"cube",Vector3.zero,Vector3.one);
                     float rotation_angle = 0f;                    
                     //Time tracking for threads
                     System.Diagnostics.Stopwatch clk = new System.Diagnostics.Stopwatch();
@@ -129,8 +191,75 @@ namespace UnityEx.Core.Examples {
                 break;
                 #endregion
 
+                #region RotationBatchThreaded + RotationBatch
+                case CaseTypeFlag.RotationBatchThreaded:
+                case CaseTypeFlag.RotationBatch: {
+
+                    //Init basic layout data
+                    int cx = 20;
+                    int cz = 20;
+                    int cy = 25;
+                    int max_cubes = cx*cy*cz;
+                    float csm = 2f;
+                    //cube size
+                    float cube_size = (csm-0.8f)/(float)Mathf.Max(cx,cy,cz);
+                    //locals
+                    Vector3 p = Vector3.zero;
+                    Vector3 s = Vector3.one * cube_size;
+
+                    int create_steps = Mathf.Max(1,(cx*cz)/10);
+                    int k=0;
+
+                    //Async create the layout
+                    Activity.Run(delegate(Activity a) {
+                        for(int i=0;i<create_steps;i++) {                            
+                            //cube grid layout
+                            p.x = ((float)(k%cx))      * (cube_size*csm);
+                            p.z = ((float)(k/cx)%cz)   * (cube_size*csm);
+                            p.y = ((float)(k/(cx*cz))) * (cube_size*csm);
+
+                            p.y -= (((float)(cy-1))*0.5f)  * (cube_size*csm);
+                        
+                            GameObject it = CreatePrimitive(PrimitiveType.Cube,"cube-"+k.ToString("0000"),p,s);
+                            Rotator rc = null;
+                            //Based on example type add the needed rotator
+                            if(type==CaseTypeFlag.RotationBatch)         rc = it.AddComponent<MonoRotator>();
+                            if(type==CaseTypeFlag.RotationBatchThreaded) rc = it.AddComponent<ThreadRotator>();
+                            //Init random speed
+                            if(rc)rc.speed = new Vector3(Random.Range(-5f,5f),Random.Range(-40f,40f),Random.Range(-5f,5f));
+                            k++;
+                            if(k>=max_cubes) break;
+                        }
+                        if(k>=max_cubes) return false;
+                        return true;
+                    });
+
+                    Debug.Log($"ExampleActivity> Created [{max_cubes}] Cubes");
+
+                }
+                break;
+                #endregion
             }
 
+        }
+
+        /// <summary>
+        /// Creates a cube.
+        /// </summary>
+        /// <param name="p_name"></param>
+        /// <param name="p_pos"></param>
+        /// <param name="p_scl"></param>
+        /// <returns></returns>
+        protected GameObject CreatePrimitive(PrimitiveType p_type,string p_name,Vector3 p_pos,Vector3 p_scl) {
+            GameObject res = GameObject.CreatePrimitive(p_type);
+            res.transform.parent = content ? content : transform;
+            res.name = p_name;
+            res.transform.localPosition = p_pos;
+            res.transform.localScale    = p_scl;
+            MeshRenderer mr = res.GetComponent<MeshRenderer>();
+            mr.receiveShadows = false;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return res;
         }
 
     }
