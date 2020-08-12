@@ -230,9 +230,9 @@ namespace UnityExt.Core.Examples {
             Await,
             Rotation,
             RotationThreaded,
-            RotationBatch,
-            RotationBatchThreaded,
-            RotationBatchJob,
+            RotationInstancesMono,
+            RotationInstancesThreaded,
+            RotationInstancesJob,
         }
 
         #endregion
@@ -386,10 +386,10 @@ namespace UnityExt.Core.Examples {
 
                 #endregion
 
-                #region RotationBatch / Mono|Threaded|Jobs
-                case CaseTypeFlag.RotationBatchJob:
-                case CaseTypeFlag.RotationBatchThreaded:
-                case CaseTypeFlag.RotationBatch: {
+                #region RotationInstances / Mono|Threaded|Jobs
+                case CaseTypeFlag.RotationInstancesJob:
+                case CaseTypeFlag.RotationInstancesThreaded:
+                case CaseTypeFlag.RotationInstancesMono: {
 
                     //Init basic layout data
                     int cx = 20;
@@ -429,9 +429,9 @@ namespace UnityExt.Core.Examples {
                             it.name = "cube-"+k.ToString("00000");
                             Rotator rc = null;
                             //Based on example type add the needed rotator
-                            if(type==CaseTypeFlag.RotationBatch)         rc = it.AddComponent<MonoRotator>();
-                            if(type==CaseTypeFlag.RotationBatchThreaded) rc = it.AddComponent<ThreadRotator>();
-                            if(type==CaseTypeFlag.RotationBatchJob)      rc = it.AddComponent<JobRotator>();                            
+                            if(type==CaseTypeFlag.RotationInstancesMono)     rc = it.AddComponent<MonoRotator>();
+                            if(type==CaseTypeFlag.RotationInstancesThreaded) rc = it.AddComponent<ThreadRotator>();
+                            if(type==CaseTypeFlag.RotationInstancesJob)      rc = it.AddComponent<JobRotator>();                            
                             //Init random speed
                             if(rc) {                                        
                                 rc.SetSpeed(new Vector3(Random.Range(-5f,5f),Random.Range(-40f,40f),Random.Range(-5f,5f)));
@@ -444,7 +444,7 @@ namespace UnityExt.Core.Examples {
                         return true;
                     });
 
-                    Debug.Log($"ExampleActivity> Created [{max_cubes}] Cubes");
+                    Debug.Log($"ExampleActivity> {type} - Created [{max_cubes}] Cubes");
 
                 }
                 break;
