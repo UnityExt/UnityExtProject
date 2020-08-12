@@ -1,6 +1,9 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading.Tasks;
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
 
@@ -11,52 +14,138 @@ namespace UnityExt.Core.Examples {
     /// </summary>
     public class ExampleActivity : MonoBehaviour {
 
+        #region Types
+
         #region class Rotator
         /// <summary>
         /// Base class that can support different interfaces
         /// </summary>
         public class Rotator : ActivityBehaviour {
+
+            #region struct Rotator.Job
+
             /// <summary>
-            /// Rotation speed
+            /// Auxiliary struct that also acts as Unity job.
             /// </summary>
-            public Vector3 speed;
+            public struct Job : IJob {
+                /// <summary>
+                /// Speed data
+                /// </summary>
+                [ReadOnly]
+                public NativeArray<float> speed;
+                /// <summary>
+                /// Angle Data
+                /// </summary>                
+                public NativeArray<float> angle;
+                /// <summary>
+                /// Current dt.
+                /// </summary>
+                public float dt;
+                /// <summary>
+                /// Runs the job
+                /// </summary>
+                public void Execute() {
+                    float t = 1f;
+                    //Super slow stepping
+                    for(int i = 0; i<((int)t); i++) {
+                        angle[0] += speed[0]*(float)(dt/t);
+                        angle[1] += speed[1]*(float)(dt/t);
+                        angle[2] += speed[2]*(float)(dt/t);
+                    }
+                }
+            }
+
+            #endregion
+            
             /// <summary>
-            /// Current angle
+            /// Rotator job
             /// </summary>
-            public Vector3 angle;
+            public Job job;
+
+            /// <summary>
+            /// Handle for the job.
+            /// </summary>
+            public JobHandle handle;
+
+            /// <summary>
+            /// Flag that tells to schedule the job or not.
+            /// </summary>
+            public bool schedule;
+
             /// <summary>
             /// Last time
             /// </summary>
             private double m_last_time;                        
             private Transform m_tcache;
             private bool m_wait;
+            private bool m_can_step;
             static System.Diagnostics.Stopwatch m_clk;
             double clk_time { get { return (((double)m_clk.ElapsedMilliseconds)/1000.0);  } }
+
             /// <summary>
             /// CTOR
             /// </summary>
-            protected void Awake() {
+            virtual protected void Awake() {
                 if(m_clk==null) { m_clk = new System.Diagnostics.Stopwatch(); m_clk.Start(); }
                 m_last_time = 0f;
                 m_tcache    = transform;
+                job    = new Job();
+                job.speed=new NativeArray<float>(new float[] { 0f,0f,0f },Allocator.TempJob);
+                job.angle=new NativeArray<float>(new float[] { 0f,0f,0f },Allocator.TempJob);                                
+                handle = default;
+                m_can_step = enabled;
             }
+
+            /// <summary>
+            /// Set the rotation speed.
+            /// </summary>
+            /// <param name="v"></param>
+            public void SetSpeed(Vector3 v) {
+                job.speed[0] = v[0];
+                job.speed[1] = v[1];
+                job.speed[2] = v[2];
+            }
+
             /// <summary>
             /// Steps the rotation
             /// </summary>
             public void Step() {
+                if(!m_can_step) return;
                 if(m_wait) return;
+                if(schedule)if(!handle.IsCompleted) return;
                 double dt = clk_time - m_last_time;                                                                
+                job.dt = (float)dt;
                 m_last_time = clk_time;
-                //Super slow stepping
-                for(int i=0;i<200;i++) angle += speed * (float)(dt/200.0);
+                if(schedule) handle = job.Schedule(); else job.Execute();
                 m_wait = true;
             }
+
             /// <summary>
             /// Applies the rotation.
             /// </summary>
-            public void Apply() {                
-                if(m_tcache) m_tcache.localEulerAngles = angle;
+            public void Apply() {  
+                //Store flag for threads
+                m_can_step = enabled;
+                //If not enabled skip
+                if(!enabled) return; 
+                //If 'schedule' mode and not complete skip otherwise complete the job
+                if(schedule) if(!handle.IsCompleted) return; else handle.Complete();
+                //Apply results
+                if(m_tcache) m_tcache.localEulerAngles = new Vector3(job.angle[0],job.angle[1],job.angle[2]);
+                //Signal that the frame is done and new schedule can happen
                 m_wait=false;
+                //Reset handle
+                handle = default;
+            }
+
+            /// <summary>
+            /// DTOR
+            /// </summary>
+            override protected void OnDestroy() {
+                base.OnDestroy();
+                if(schedule) handle.Complete();
+                if(job.speed.IsCreated) job.speed.Dispose();
+                if(job.angle.IsCreated) job.angle.Dispose();
             }
         }
 
@@ -64,6 +153,8 @@ namespace UnityExt.Core.Examples {
         /// Rotator that runs inside the unity thread
         /// </summary>
         public class MonoRotator : Rotator, IUpdateable {  public void OnUpdate() { Step(); Apply(); } }
+
+        public class JobRotator : Rotator, IUpdateable { override protected void Awake() { base.Awake(); schedule=true; }  public void OnUpdate() { Step(); Apply(); } }
 
         /// <summary>
         /// Rotator that runs inside a thread and applies the result in the unity thread.
@@ -75,6 +166,59 @@ namespace UnityExt.Core.Examples {
 
         #endregion
 
+        #region struct RandomSumJob
+
+        /// <summary>
+        /// Simple job to sum a random scaled number several times.
+        /// </summary>
+        public struct RandomSumJob : IJob, IJobComponent {
+            /// <summary>
+            /// Random scale
+            /// </summary>
+            public float scale;
+            /// <summary>
+            /// Final Result
+            /// </summary>
+            public NativeArray<float> result;
+            /// <summary>
+            /// Auxiliary method to generate random inside jobs
+            /// </summary>
+            /// <returns></returns>
+            public float GetRandom() { return (float)m_random.NextDouble(); }
+            static System.Random m_random = new System.Random();
+            /// <summary>
+            /// Called prior to job execution in the main thread.
+            /// </summary>
+            public void OnInit() {
+                //RandomSumJob jb = this;
+                if(!result.IsCreated) result = new NativeArray<float>(1, Allocator.TempJob);
+                result[0] = 0f;
+                scale = Random.Range(0.01f,0.1f);                
+            }
+            /// <summary>
+            /// Called after job completion sync or async in the main thread.
+            /// </summary>
+            public void OnComplete() {                
+                //Debug.Log(scale+" "+result[0]);
+            }
+            /// <summary>
+            /// Called after activity stop/complete in the main thread.
+            /// </summary>
+            public void OnDestroy() {                
+                if(result.IsCreated) result.Dispose();
+            }
+            /// <summary>
+            /// Exeucte job
+            /// </summary>
+            public void Execute() {                
+                for(int i=0;i<500000;i++) result[0] += GetRandom()*scale;
+            }            
+        }
+
+        #endregion
+
+        #endregion
+
         #region enum CaseTypeFlag
 
         /// <summary>
@@ -82,11 +226,13 @@ namespace UnityExt.Core.Examples {
         /// </summary>
         public enum CaseTypeFlag {
             Basic,
+            BasicJob,
             Await,
             Rotation,
             RotationThreaded,
             RotationBatch,
             RotationBatchThreaded,
+            RotationBatchJob,
         }
 
         #endregion
@@ -100,6 +246,11 @@ namespace UnityExt.Core.Examples {
         /// Content holder.
         /// </summary>
         public Transform content;
+
+        /// <summary>
+        /// Reference to the debug cube.
+        /// </summary>
+        public GameObject debugCube;
 
         /// <summary>
         /// CTOR.
@@ -150,7 +301,9 @@ namespace UnityExt.Core.Examples {
                 #region Rotation
                 //Simple activity loop rotating a cube
                 case CaseTypeFlag.Rotation:  {
-                    GameObject cube_target = CreatePrimitive(PrimitiveType.Cube,"cube",Vector3.zero,Vector3.one);
+                    GameObject cube_target = Instantiate(debugCube);
+                    cube_target.transform.parent = content;
+                    cube_target.name = "cube";
                     float rotation_angle = 0f;
                     Activity.Run("rotator-activity-example",
                     delegate(Activity a) { 
@@ -165,7 +318,9 @@ namespace UnityExt.Core.Examples {
                 #region RotationThreaded
                 //Simple activity loop rotating a cube in a thread and applying current state in the main thread.
                 case CaseTypeFlag.RotationThreaded:  {
-                    GameObject cube_target = CreatePrimitive(PrimitiveType.Cube,"cube",Vector3.zero,Vector3.one);
+                    GameObject cube_target = Instantiate(debugCube);
+                    cube_target.transform.parent = content;
+                    cube_target.name = "cube";
                     float rotation_angle = 0f;                    
                     //Time tracking for threads
                     System.Diagnostics.Stopwatch clk = new System.Diagnostics.Stopwatch();
@@ -191,14 +346,55 @@ namespace UnityExt.Core.Examples {
                 break;
                 #endregion
 
-                #region RotationBatchThreaded + RotationBatch
+                #region BasicJob
+
+                case CaseTypeFlag.BasicJob: {                    
+                    //Creates the job and runs it
+                    //Watch the 'frameCount' difference between 'sync' and 'async and the FPS as well
+                    //Also watch the profiler
+                    Activity<RandomSumJob> job_a = null;
+                    job_a =
+                    Activity<RandomSumJob>.Run(delegate(Activity n) {
+                        Activity<RandomSumJob> a = (Activity<RandomSumJob>)n;
+                        Debug.Log(Time.frameCount+" "+a.context+" "+a.job.scale+" "+a.job.result[0]);                        
+                        return true;
+                    },true);
+
+                    float c_frame = 0f;
+                    float c_time  = 0f;
+
+                    //Small FPS counter and input detection running in Mono.Update
+                    Activity.Run(delegate(Activity a){
+                        //Switch the execution pattern while the job executes or not
+                        if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == Activity.Context.JobAsync ? Activity.Context.Job : Activity.Context.JobAsync;
+                        //Stop the job loop
+                        if(Input.GetKeyUp(KeyCode.S)) job_a.Stop();
+                        //Start the job loop
+                        if(Input.GetKeyUp(KeyCode.D)) job_a.Start();
+                        //FPS counter
+                        c_frame += 1f;
+                        c_time  += Time.deltaTime;
+                        if(c_time<0.5f) return true;                        
+                        Debug.Log("FPS: "+(c_frame*2f).ToString("0"));
+                        c_time  = 0f;
+                        c_frame = 0f;
+                        return true;
+                    });
+                    
+                }
+                break;
+
+                #endregion
+
+                #region RotationBatch / Mono|Threaded|Jobs
+                case CaseTypeFlag.RotationBatchJob:
                 case CaseTypeFlag.RotationBatchThreaded:
                 case CaseTypeFlag.RotationBatch: {
 
                     //Init basic layout data
                     int cx = 20;
                     int cz = 20;
-                    int cy = 25;
+                    int cy = 20;
                     int max_cubes = cx*cy*cz;
                     float csm = 2f;
                     //cube size
@@ -207,11 +403,17 @@ namespace UnityExt.Core.Examples {
                     Vector3 p = Vector3.zero;
                     Vector3 s = Vector3.one * cube_size;
 
-                    int create_steps = Mathf.Max(1,(cx*cz)/10);
+                    int create_steps = Mathf.Max(1,Mathf.Min(cx,cy,cz));
                     int k=0;
+
+                    List<Rotator> instances = new List<Rotator>();
 
                     //Async create the layout
                     Activity.Run(delegate(Activity a) {
+                        if(k>=max_cubes) {
+                            for(int i=0;i<instances.Count;i++) instances[i].enabled=true;
+                            return false;
+                        }
                         for(int i=0;i<create_steps;i++) {                            
                             //cube grid layout
                             p.x = ((float)(k%cx))      * (cube_size*csm);
@@ -220,17 +422,25 @@ namespace UnityExt.Core.Examples {
 
                             p.y -= (((float)(cy-1))*0.5f)  * (cube_size*csm);
                         
-                            GameObject it = CreatePrimitive(PrimitiveType.Cube,"cube-"+k.ToString("0000"),p,s);
+                            GameObject it = Instantiate(debugCube);
+                            it.transform.parent = content;
+                            it.transform.localPosition = p;
+                            it.transform.localScale    = s;
+                            it.name = "cube-"+k.ToString("00000");
                             Rotator rc = null;
                             //Based on example type add the needed rotator
                             if(type==CaseTypeFlag.RotationBatch)         rc = it.AddComponent<MonoRotator>();
                             if(type==CaseTypeFlag.RotationBatchThreaded) rc = it.AddComponent<ThreadRotator>();
+                            if(type==CaseTypeFlag.RotationBatchJob)      rc = it.AddComponent<JobRotator>();                            
                             //Init random speed
-                            if(rc)rc.speed = new Vector3(Random.Range(-5f,5f),Random.Range(-40f,40f),Random.Range(-5f,5f));
+                            if(rc) {                                        
+                                rc.SetSpeed(new Vector3(Random.Range(-5f,5f),Random.Range(-40f,40f),Random.Range(-5f,5f)));
+                                rc.enabled=false;
+                                instances.Add(rc);
+                            }
                             k++;
                             if(k>=max_cubes) break;
-                        }
-                        if(k>=max_cubes) return false;
+                        }                        
                         return true;
                     });
 
@@ -239,28 +449,11 @@ namespace UnityExt.Core.Examples {
                 }
                 break;
                 #endregion
+
             }
 
         }
 
-        /// <summary>
-        /// Creates a cube.
-        /// </summary>
-        /// <param name="p_name"></param>
-        /// <param name="p_pos"></param>
-        /// <param name="p_scl"></param>
-        /// <returns></returns>
-        protected GameObject CreatePrimitive(PrimitiveType p_type,string p_name,Vector3 p_pos,Vector3 p_scl) {
-            GameObject res = GameObject.CreatePrimitive(p_type);
-            res.transform.parent = content ? content : transform;
-            res.name = p_name;
-            res.transform.localPosition = p_pos;
-            res.transform.localScale    = p_scl;
-            MeshRenderer mr = res.GetComponent<MeshRenderer>();
-            mr.receiveShadows = false;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            return res;
-        }
 
     }
 
