@@ -191,7 +191,7 @@ namespace UnityExt.Core.Examples {
             /// </summary>
             public void OnInit() {
                 //RandomSumJob jb = this;
-                if(!result.IsCreated) result = new NativeArray<float>(1, Allocator.TempJob);
+                if(!result.IsCreated) result = new NativeArray<float>(1, Allocator.Persistent);
                 result[0] = 0f;
                 scale = Random.Range(0.01f,0.1f);                
             }
@@ -352,7 +352,7 @@ namespace UnityExt.Core.Examples {
                     //Creates the job and runs it
                     //Watch the 'frameCount' difference between 'sync' and 'async and the FPS as well
                     //Also watch the profiler
-                    Activity<RandomSumJob> job_a = null;
+                    Activity<RandomSumJob> job_a = null;                    
                     job_a =
                     Activity<RandomSumJob>.Run(delegate(Activity n) {
                         Activity<RandomSumJob> a = (Activity<RandomSumJob>)n;
@@ -392,9 +392,9 @@ namespace UnityExt.Core.Examples {
                 case CaseTypeFlag.RotationInstancesMono: {
 
                     //Init basic layout data
-                    int cx = 20;
-                    int cz = 20;
-                    int cy = 20;
+                    int cx = 25;
+                    int cz = 25;
+                    int cy = 25;
                     int max_cubes = cx*cy*cz;
                     float csm = 2f;
                     //cube size
@@ -420,7 +420,7 @@ namespace UnityExt.Core.Examples {
                             p.z = ((float)(k/cx)%cz)   * (cube_size*csm);
                             p.y = ((float)(k/(cx*cz))) * (cube_size*csm);
 
-                            p.y -= (((float)(cy-1))*0.5f)  * (cube_size*csm);
+                            p.y -= (((float)(cy-1))*0.55f) * (cube_size*csm);
                         
                             GameObject it = Instantiate(debugCube);
                             it.transform.parent = content;
