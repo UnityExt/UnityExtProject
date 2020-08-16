@@ -6,13 +6,14 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
+using UnityEngine.UI;
 
 namespace UnityExt.Core.Examples {
 
     /// <summary>
     /// Perform a few examples of activity usage.
     /// </summary>
-    public class ExampleActivity : MonoBehaviour {
+    public class ExamplesApp : MonoBehaviour {
 
         #region Types
 
@@ -45,7 +46,7 @@ namespace UnityExt.Core.Examples {
                 /// Runs the job
                 /// </summary>
                 public void Execute() {
-                    float t = 1f;
+                    float t = 200f;
                     //Super slow stepping
                     for(int i = 0; i<((int)t); i++) {
                         angle[0] += speed[0]*(float)(dt/t);
@@ -225,6 +226,7 @@ namespace UnityExt.Core.Examples {
         /// Enumeration to choose an example.
         /// </summary>
         public enum CaseTypeFlag {
+            None,
             Basic,
             BasicJob,
             Await,
@@ -233,6 +235,9 @@ namespace UnityExt.Core.Examples {
             RotationInstancesMono,
             RotationInstancesThreaded,
             RotationInstancesJob,
+            TimerBasic,
+            TimerSteps,
+            TimerAtomic,
         }
 
         #endregion
@@ -253,10 +258,28 @@ namespace UnityExt.Core.Examples {
         public GameObject debugCube;
 
         /// <summary>
-        /// CTOR.
+        /// Reference to the console logging field.
         /// </summary>
-        protected void Start() {
+        public Text consoleField;
 
+        /// <summary>
+        /// Reference to the header title field.
+        /// </summary>
+        public Text titleField;
+
+        /// <summary>
+        /// Reference to the progress bar.
+        /// </summary>
+        public Image progressBarField;
+
+        /// <summary>
+        /// Reference to the progress bar text field.
+        /// </summary>
+        public Text progressField;
+
+        public void Run(CaseTypeFlag p_type) {
+            type = p_type;
+            if(titleField) titleField.text = "UnityExt / "+type.ToString();
             switch(type) {
 
                 #region Basic
@@ -292,7 +315,7 @@ namespace UnityExt.Core.Examples {
                     };
                     //Call the method
                     async_cb();                    
-                    Debug.Log("ExampleActivity> Await / Before Break");
+                    Debug.Log("ExampleActivity> Await / After Async Call Break");
                     
                 }
                 break;
@@ -347,54 +370,60 @@ namespace UnityExt.Core.Examples {
                 #endregion
 
                 #region BasicJob
-
+                //Creates a basic random sum job that perform thousands of operations to emulato app overload.
                 case CaseTypeFlag.BasicJob: {                    
+
+                    //Disable VSync to view FPS difference
+                    QualitySettings.vSyncCount = 0;
+
                     //Creates the job and runs it
                     //Watch the 'frameCount' difference between 'sync' and 'async and the FPS as well
                     //Also watch the profiler
+                    
+                    //List of results logs
+                    List<string> job_results = new List<string>();
+                    //Creates and executes the job
                     Activity<RandomSumJob> job_a = null;                    
                     job_a =
                     Activity<RandomSumJob>.Run(delegate(Activity n) {
                         Activity<RandomSumJob> a = (Activity<RandomSumJob>)n;
-                        Debug.Log(Time.frameCount+" "+a.context+" "+a.job.scale+" "+a.job.result[0]);                        
+                        job_results.Add("Complete: Frame["+Time.frameCount+"] "+a.context+" scale["+a.job.scale.ToString("0.0")+"] result["+a.job.result[0].ToString("0.0")+"]");
+                        if(job_results.Count>10) job_results.RemoveAt(0);
                         return true;
                     },true);
-
-                    float c_frame = 0f;
-                    float c_time  = 0f;
-
-                    //Small FPS counter and input detection running in Mono.Update
+                    //Detects the input and log the status
                     Activity.Run(delegate(Activity a){
                         //Switch the execution pattern while the job executes or not
                         if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == Activity.Context.JobAsync ? Activity.Context.Job : Activity.Context.JobAsync;
                         //Stop the job loop
-                        if(Input.GetKeyUp(KeyCode.S)) job_a.Stop();
+                        if(Input.GetKeyUp(KeyCode.S)) { job_a.Stop(); }
                         //Start the job loop
-                        if(Input.GetKeyUp(KeyCode.D)) job_a.Start();
-                        //FPS counter
-                        c_frame += 1f;
-                        c_time  += Time.deltaTime;
-                        if(c_time<0.5f) return true;                        
-                        Debug.Log("FPS: "+(c_frame*2f).ToString("0"));
-                        c_time  = 0f;
-                        c_frame = 0f;
+                        if(Input.GetKeyUp(KeyCode.D)) { job_a.Start(); job_results.Clear(); }
+                        
+                        ClearLog();
+                        Log($"== Inputs ==");
+                        Log($"[A] Switch Job Context");
+                        Log($"[S] Stop Job");
+                        Log($"[D] Starts Job");
+                        Log($"============");
+                        Log(string.Join("\n",job_results));
+
                         return true;
                     });
                     
                 }
                 break;
-
                 #endregion
 
-                #region RotationInstances / Mono|Threaded|Jobs
+                #region RotationInstances / Mono|Threaded|Jobs                
+                //This demo instantiates several cubes with a simple rotation component (that performs a simulated heavy operation) that executes in the different contexts allowed by 'Activity'
                 case CaseTypeFlag.RotationInstancesJob:
                 case CaseTypeFlag.RotationInstancesThreaded:
                 case CaseTypeFlag.RotationInstancesMono: {
-
                     //Init basic layout data
-                    int cx = 25;
-                    int cz = 25;
-                    int cy = 25;
+                    int cx = 19;
+                    int cz = 19;
+                    int cy = 19;
                     int max_cubes = cx*cy*cz;
                     float csm = 2f;
                     //cube size
@@ -443,17 +472,197 @@ namespace UnityExt.Core.Examples {
                         }                        
                         return true;
                     });
+                    Log($"=== Cube Rotation Instances ===");
+                    Log($"Each cube instance contains a 'Rotator' component.");
+                    Log($"It for-loop 200 steps to rotate and simulate a heavy load.");
+                    Log($"The execution falls in one of the contexts offered by 'Activity'.");
+                    Log($"=============");
+                    Log($"Cubes:{max_cubes}");
+                    switch(type) {
+                        case CaseTypeFlag.RotationInstancesMono:     Log($"Step: Update");   Log($"Rotate: Update"); break;
+                        case CaseTypeFlag.RotationInstancesThreaded: Log($"Step: Thread");   Log($"Rotate: Update"); break;
+                        case CaseTypeFlag.RotationInstancesJob:      Log($"Step: UnityJob"); Log($"Rotate: Update"); break;
+                    }                    
+                }
+                break;
+                #endregion
 
-                    Debug.Log($"ExampleActivity> {type} - Created [{max_cubes}] Cubes");
+                #region TimerBasic
+                //Creates a timer running in loop and track the time.
+                case CaseTypeFlag.TimerBasic: {
+                    //Create an unity-clocked timer, that runs for 3s and counts a step during infinite steps.
+                    Timer timer = new Timer("simple-timer",3.0f,0, Timer.Type.Unity);
+                    //Start with 3s delay
+                    float delay = 3f;
+                    timer.Start(delay);
+                    //Little UI loop
+                    Activity.Run(delegate(Activity a){  
+                        
+                        ClearLog();
+                        Log("=== Simple Timer ===");
+                        Log("[A] Restart Timer");
+                        Log("[S] Restart Step");
+                        Log("[D] Stop");
+                        Log("[F] Pause");
+                        Log("======");
+
+                        if(Input.GetKeyUp(KeyCode.A)) timer.Restart();
+                        if(Input.GetKeyUp(KeyCode.S)) timer.RestartStep();
+                        if(Input.GetKeyUp(KeyCode.D)) timer.Stop();
+                        if(Input.GetKeyUp(KeyCode.F)) timer.paused = !timer.paused;
+                        
+                        string t = "#"+timer.step.ToString("00")+" "+timer.elapsed.ToString("0.00")+"s";
+
+                        if(timer.state == Activity.State.Queued)  t = "Waiting "+timer.delay+"s";
+                        if(timer.state == Activity.State.Stopped) t = "STOPPED";
+                        if(timer.paused) t = "PAUSED / "+t;
+
+                        Log($"<size=23>{t}</size>");
+
+                        SetProgress(timer.progress);
+                        //*/
+                        return true;
+                    });
+
+                }
+                break;
+                #endregion
+
+                #region TimerSteps
+                //Creates and run a simple timer.
+                case CaseTypeFlag.TimerSteps: {
+                    //Create a thread-clocked timer, that takes 0.15s each step across 3 steps.
+                    Timer timer = new Timer("simple-timer",0.15f,3, Timer.Type.System);
+                    //Log list
+                    List<string> log = new List<string>();
+                    //Called each tick.
+                    timer.OnExecuteEvent = 
+                    delegate(Timer t) {
+                        log.Add($"Execute: [{t.step}/{t.count}] [{t.elapsed.ToString("0.00")}/{t.duration.ToString("0.00")}] {t.progress.ToString("0.00")}");
+                        if(log.Count>70) log.RemoveAt(0);
+                        ClearLog();
+                        Log(string.Join("\n",log));
+                        return false;
+                    };
+                    //Called per step
+                    timer.OnStepEvent = 
+                    delegate(Timer t) {
+                        log.Add($"Step: [{t.step}/{t.count}] [{t.elapsed.ToString("0.00")}/{t.duration.ToString("0.00")}] {t.progress.ToString("0.00")}");
+                        
+                        //Its possible to change the duration anytime, now we randomize it for the next step.
+                        if(t.step<t.count) t.duration = Random.Range(0.3f,0.4f);
+
+                        if(log.Count>70) log.RemoveAt(0);
+                        ClearLog();
+                        Log(string.Join("\n",log));
+                        return true;
+                    };
+                    //Called after the last step.
+                    timer.OnCompleteEvent = 
+                    delegate(Timer t) {
+                        log.Add($"Complete: [{t.step}/{t.count}] [{t.elapsed.ToString("0.00")}/{t.duration.ToString("0.00")}] {t.progress.ToString("0.00")}");
+                        if(log.Count>70) log.RemoveAt(0);
+                        ClearLog();
+                        Log(string.Join("\n",log));
+                    };
+                    //Starts the timer with 3s of delay.
+                    timer.Start(3f);
+
+                }
+                break;
+                #endregion
+
+                #region TimerAtomic
+                //"Atomic" timers uses the system file system to store a time stamp and help keep track of time in the long run execution of the game.
+                case CaseTypeFlag.TimerAtomic: {
+                    //Clock id
+                    string clock_id = "atomic-clock-example";
+                    //Init datetimes
+                    System.DateTime time_stamp = System.DateTime.UtcNow;                    
+                    System.TimeSpan time_span  = new System.TimeSpan(0);
+                    //Get or Create an atomic clock by id.
+                    time_stamp = Timer.GetAtomicTimestamp(clock_id);
+                    time_span  = Timer.GetAtomicClockElapsed(clock_id);
+                    
+                    //Little UI loop
+                    Activity.Run(delegate(Activity a){  
+                        
+                        ClearLog();
+                        Log("=== Simple Atomic Clock ===");
+                        Log("[A] Refresh Clock");                        
+                        Log("[S] Clear Clock");                        
+                        Log(" ");
+                        Log("=== Atomic Clock Path ===");
+                        Log($"<size=10>{Timer.atomicClockFolder}</size>");
+
+                        bool will_refresh = false;
+
+                        if(Input.GetKeyUp(KeyCode.A)) will_refresh = true;
+                        if(Input.GetKeyUp(KeyCode.S)) { Timer.ClearAtomicTimestamp(clock_id); will_refresh=true; }
+                        
+                        if(will_refresh) {
+                            time_stamp = Timer.GetAtomicTimestamp(clock_id);
+                            time_span  = Timer.GetAtomicClockElapsed(clock_id);
+                        }
+                        
+                        Log($"<size=14>=== TimeStamp ===</size>");
+                        Log(time_stamp.ToString("yy-MM-dd / HH:mm:ss"));
+                        Log($"<size=14>=== Elapsed ===</size>");
+                        string vh = time_span.TotalHours<=0f ? "" : time_span.TotalHours.ToString("0");
+                        string vm = time_span.Minutes.ToString("0");
+                        string vs = time_span.Seconds.ToString("0");
+                        Log($"{vh}h {vm}min {vs}s");
+                        
+                        return true;
+                    });
 
                 }
                 break;
                 #endregion
 
             }
-
         }
 
+        /// <summary>
+        /// CTOR.
+        /// </summary>
+        protected void Start() {
+            ClearLog();
+            SetProgress(0f);
+            if(type!= CaseTypeFlag.None) Run(type);
+        }
+
+        #region Console
+
+        /// <summary>
+        /// Clears the log
+        /// </summary>
+        public void ClearLog() {
+            if(!consoleField) return;            
+            consoleField.text = "";            
+        }
+
+        /// <summary>
+        /// Appends a new log.
+        /// </summary>
+        /// <param name="p_log"></param>
+        public void Log(string p_log) {
+            if(!consoleField) return;            
+            consoleField.text += p_log;
+            consoleField.text += "\n";
+        }
+
+        /// <summary>
+        /// Set the progress bar in the bottom.
+        /// </summary>
+        /// <param name="p_progress"></param>
+        public void SetProgress(float p_progress) {
+            progressBarField.rectTransform.localScale = new Vector3(Mathf.Clamp01(p_progress),1f,1f);
+            progressField.text = "Progress: "+Mathf.FloorToInt(p_progress*100f)+"%";
+            progressField.enabled = p_progress>0f;
+        }
+
+        #endregion
 
     }
 
