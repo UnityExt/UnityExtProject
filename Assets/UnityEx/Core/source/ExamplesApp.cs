@@ -6,6 +6,9 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
+using UnityExt.Core.Sys;
+using UnityExt.Core.UI;
+using UnityExt.Core.Motion;
 using UnityEngine.UI;
 
 namespace UnityExt.Core.Examples {
