@@ -239,6 +239,7 @@ namespace UnityExt.Core.Examples {
             TimerSteps,
             TimerAtomicBasic,
             InterpolatorBasic,
+            TweenBasic,
         }
 
         #endregion
@@ -291,11 +292,11 @@ namespace UnityExt.Core.Examples {
                 #region Basic
                 //Simple activity loop rotating a cube
                 case CaseTypeFlag.Basic:  {                    
-                    Activity.Run("activity-update",       delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update");       }, Activity.Context.Update);
-                    Activity.Run("activity-late-update",  delegate(Activity a) { Debug.Log("ExampleActivity> Run at LateUpdate");   }, Activity.Context.LateUpdate);
-                    Activity.Run("activity-fixed-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at FixedUpdate");  }, Activity.Context.FixedUpdate);
-                    Activity.Run("activity-async-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update Async"); }, Activity.Context.Async);
-                    Activity.Run("activity-thread",       delegate(Activity a) { Debug.Log("ExampleActivity> Run inside a Thread"); }, Activity.Context.Thread);
+                    Activity.Run("activity-update",       delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update");       }, ActivityContext.Update);
+                    Activity.Run("activity-late-update",  delegate(Activity a) { Debug.Log("ExampleActivity> Run at LateUpdate");   }, ActivityContext.LateUpdate);
+                    Activity.Run("activity-fixed-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at FixedUpdate");  }, ActivityContext.FixedUpdate);
+                    Activity.Run("activity-async-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update Async"); }, ActivityContext.Async);
+                    Activity.Run("activity-thread",       delegate(Activity a) { Debug.Log("ExampleActivity> Run inside a Thread"); }, ActivityContext.Thread);
                 }
                 break;
                 #endregion
@@ -310,7 +311,7 @@ namespace UnityExt.Core.Examples {
                         t+= Time.deltaTime;
                         if(t>=3f) { Debug.Log("ExampleActivity> Await / Loop Complete"); return false; }
                         return true;
-                    }, Activity.Context.Update);
+                    }, ActivityContext.Update);
                     //Async callback for the example.
                     System.Action async_cb = 
                     async delegate() { 
@@ -339,7 +340,7 @@ namespace UnityExt.Core.Examples {
                         cube_target.transform.localEulerAngles = Vector3.up * rotation_angle;
                         rotation_angle += Time.deltaTime * 90f;
                         return true;
-                    }, Activity.Context.Update);
+                    }, ActivityContext.Update);
                 }
                 break;
                 #endregion
@@ -364,13 +365,13 @@ namespace UnityExt.Core.Examples {
                         rotation_angle += dt * 90f;
                         clk.Restart();
                         return true;
-                    }, Activity.Context.Thread);
+                    }, ActivityContext.Thread);
                     //Starts the loop that collects whichever results are in from the thread
                     Activity.Run("rotator-activity-update",
                     delegate(Activity a) { 
                         cube_target.transform.localEulerAngles = Vector3.up * rotation_angle;
                         return true;
-                    }, Activity.Context.Update);
+                    }, ActivityContext.Update);
                 }
                 break;
                 #endregion
@@ -400,7 +401,7 @@ namespace UnityExt.Core.Examples {
                     //Detects the input and log the status
                     Activity.Run(delegate(Activity a){
                         //Switch the execution pattern while the job executes or not
-                        if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == Activity.Context.JobAsync ? Activity.Context.Job : Activity.Context.JobAsync;
+                        if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == ActivityContext.JobAsync ? ActivityContext.Job : ActivityContext.JobAsync;
                         //Stop the job loop
                         if(Input.GetKeyUp(KeyCode.S)) { job_a.Stop(); }
                         //Start the job loop
@@ -497,7 +498,7 @@ namespace UnityExt.Core.Examples {
                 //Creates a timer running in loop and track the time.
                 case CaseTypeFlag.TimerBasic: {
                     //Create an unity-clocked timer, that runs for 3s and counts a step during infinite steps.
-                    Timer timer = new Timer("simple-timer",3.0f,0, Timer.Type.Unity);
+                    Timer timer = new Timer("simple-timer",3.0f,0, TimerType.Unity);
                     //Start with 3s delay
                     float delay = 3f;
                     timer.Start(delay);
@@ -519,8 +520,8 @@ namespace UnityExt.Core.Examples {
                         
                         string t = "#"+timer.step.ToString("00")+" "+timer.elapsed.ToString("0.00")+"s";
 
-                        if(timer.state == Activity.State.Queued)  t = "Waiting "+timer.delay+"s";
-                        if(timer.state == Activity.State.Stopped) t = "STOPPED";
+                        if(timer.state == ActivityState.Queued)  t = "Waiting "+timer.delay+"s";
+                        if(timer.state == ActivityState.Stopped) t = "STOPPED";
                         if(timer.paused) t = "PAUSED / "+t;
 
                         Log($"<size=23>{t}</size>");
@@ -538,7 +539,7 @@ namespace UnityExt.Core.Examples {
                 //Creates and run a simple timer.
                 case CaseTypeFlag.TimerSteps: {
                     //Create a thread-clocked timer, that takes 0.15s each step across 3 steps.
-                    Timer timer = new Timer("simple-timer",0.15f,3, Timer.Type.System);
+                    Timer timer = new Timer("simple-timer",0.15f,3, TimerType.System);
                     //Log list
                     List<string> log = new List<string>();
                     //Called each tick.
@@ -594,7 +595,7 @@ namespace UnityExt.Core.Examples {
                     //Frame counter to refresh the time stamp
                     int refresh_timeout  = 0;
                     //Tracking timer (use thread based for more precision)
-                    Timer timer = new Timer(Timer.Type.System);
+                    Timer timer = new Timer(TimerType.System);
                     timer.Start();
                     //Little UI loop
                     Activity.Run(delegate(Activity a){  
@@ -646,9 +647,11 @@ namespace UnityExt.Core.Examples {
                 break;
                 #endregion
 
-                #region InterpolatorBasic
-                //Example showing the basics of the interpolator classes.
+                #region Interpolator/Tween Basic                
+                //Example showing the basics of the interpolator and tween classes.
                 //They can help making easy to mix values and apply these changes of any object and property.
+                //Also this demo shows the interconnection between Tweens and Interpolators, where tween automatic animates the properties applying the same steps as manually calling interpolators 'Lerp'
+                case CaseTypeFlag.TweenBasic:
                 case CaseTypeFlag.InterpolatorBasic: {
                     //Create simple cube
                     GameObject cube_target = Instantiate(debugCube);
@@ -660,34 +663,97 @@ namespace UnityExt.Core.Examples {
                     string mn = mr.sharedMaterial.name;
                     mr.sharedMaterial = Instantiate(mr.sharedMaterial);
                     mr.sharedMaterial.name = mn;
-                    //Create all interpolators.
-                    ColorInterpolator      color_lerp = Interpolator.Get<Color>()      as ColorInterpolator;
-                    Vector3Interpolator    pos_lerp   = Interpolator.Get<Vector3>()    as Vector3Interpolator;
-                    QuaternionInterpolator rot_lerp   = Interpolator.Get<Quaternion>() as QuaternionInterpolator;
+                    //Create all interpolators
+                    Interpolator<Color>      color_lerp = Interpolator.Get<Color>();
+                    Interpolator<Vector3>    pos_lerp   = Interpolator.Get<Vector3>();
+                    Interpolator<Quaternion> rot_lerp   = Interpolator.Get<Quaternion>();
                     //Set interpolation range and easing
                     color_lerp.Set(mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);                    
                     pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
                     rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
+                    //Create all tweens setup with 'ids' for cancelling and clamp animation wrapping to stop after completion.
+                    Tween<Color>      color_tween = new Tween<Color>     ("tween-b",mr.sharedMaterial,"_Color",       Color.green,           Color.red,                        1f,TweenWrap.Clamp,debugCurve);
+                    Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform,     "position",     new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),           1f,TweenWrap.Clamp,debugCurve);
+                    Tween<Quaternion> rot_tween   = new Tween<Quaternion>("tween-b",  mr.transform,     "localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),1f,TweenWrap.Clamp,debugCurve);
+                    
                     //Angle to increment and apply sin/cos
                     float angle = 0f;
                     //Runs the loop
                     Activity.Run("interpolator-example",
-                    delegate(Activity a) {                         
-                        angle += Time.deltaTime * 90f;
-                        float sin;
-                        //Apply interpolations                        
-                        sin = Mathf.Sin((angle/5f) * Mathf.Deg2Rad);  sin = (sin+1f)*0.5f;
-                        color_lerp.Lerp(sin);
-                        sin = Mathf.Sin((angle/10f) * Mathf.Deg2Rad); sin = (sin+1f)*0.5f;
-                        pos_lerp.Lerp(sin);
-                        sin = Mathf.Sin((angle) * Mathf.Deg2Rad);     sin = (sin+1f)*0.5f;
-                        rot_lerp.Lerp(sin);
-                        return true;
-                    }, Activity.Context.Update);
+                    delegate(Activity a) {
 
-                    ClearLog();
-                    Log("=== Simple Interpolators ===");
-                    Log("Try modifying the curve in the inspector.");
+                        ClearLog();
+                        Log("=== Tween & Interpolators ===");
+                        Log("Try modifying the curve in the inspector.");
+                        Log("======");
+    
+                        switch(type) {
+
+                            #region InterpolatorBasic
+                            case CaseTypeFlag.InterpolatorBasic: {
+                                Log("Angle: "+angle.ToString("0.0"));
+                                angle += Time.deltaTime * 90f;
+                                float sin;
+                                //Apply interpolations                        
+                                sin = Mathf.Sin((angle/5f) * Mathf.Deg2Rad);  sin = (sin+1f)*0.5f;
+                                color_lerp.Lerp(sin);
+                                sin = Mathf.Sin((angle/10f) * Mathf.Deg2Rad); sin = (sin+1f)*0.5f;
+                                pos_lerp.Lerp(sin);
+                                sin = Mathf.Sin((angle) * Mathf.Deg2Rad);     sin = (sin+1f)*0.5f;
+                                rot_lerp.Lerp(sin);
+                            }
+                            break;
+                            #endregion
+
+                            #region TweenBasic
+                            case CaseTypeFlag.TweenBasic: {
+                                Log("[Q] Color Tween");
+                                Log("[W] Position Tween");
+                                Log("[E] Rotation Tween");
+                                Log("[A] Speed -0.1");
+                                Log("[S] Speed +0.1");
+                                Log("[D] Stop");
+                                Log("[F] Stop Transforms");
+                                Log("[G] Stop Material");
+                                Log("[H] Stop Tween A");
+                                Log("[J] Stop Tween B");
+                                Log("[K] Stop Transform Position");
+                                Log("[Z] Wrap Clamp");
+                                Log("[X] Wrap Repeat");
+                                Log("[C] Wrap Pinpong");
+                                Log("[V] Pause");
+                                Log("======");
+                                Log("Wrap: "+color_tween.wrap);
+                                Log("Speed: "+color_tween.speed.ToString("0.0")+"x");
+                                Log("Paused: "+color_tween.paused);
+                                Log("Color: "+color_tween.state);
+                                Log("Position: "+pos_tween.state);
+                                Log("Rotation: "+rot_tween.state);
+                                
+                                if(Input.GetKeyDown(KeyCode.Q)) color_tween.Restart();
+                                if(Input.GetKeyDown(KeyCode.W)) pos_tween.Restart();
+                                if(Input.GetKeyDown(KeyCode.E)) rot_tween.Restart();
+                                if(Input.GetKeyDown(KeyCode.A)) { color_tween.speed = pos_tween.speed = (rot_tween.speed -= 0.1f); }
+                                if(Input.GetKeyDown(KeyCode.S)) { color_tween.speed = pos_tween.speed = (rot_tween.speed += 0.1f); }
+                                if(Input.GetKeyDown(KeyCode.D)) { Tween.Clear(); }
+                                if(Input.GetKeyDown(KeyCode.F)) { Tween.Clear(mr.transform); }
+                                if(Input.GetKeyDown(KeyCode.G)) { Tween.Clear(mr.sharedMaterial); }
+                                if(Input.GetKeyDown(KeyCode.H)) { Tween.Clear("tween-a"); }
+                                if(Input.GetKeyDown(KeyCode.J)) { Tween.Clear("tween-b"); }
+                                if(Input.GetKeyDown(KeyCode.K)) { Tween.Clear(mr.transform,"position"); }
+                                if(Input.GetKeyDown(KeyCode.Z)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=TweenWrap.Clamp;   }
+                                if(Input.GetKeyDown(KeyCode.X)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=TweenWrap.Repeat;  }
+                                if(Input.GetKeyDown(KeyCode.C)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=TweenWrap.Pinpong; }
+                                if(Input.GetKeyDown(KeyCode.V)) { color_tween.paused = pos_tween.paused = (rot_tween.paused = !rot_tween.paused); }
+
+                            }
+                            break;
+                            #endregion
+
+                        }
+
+                        return true;
+                    }, ActivityContext.Update);
 
                 }
                 break;

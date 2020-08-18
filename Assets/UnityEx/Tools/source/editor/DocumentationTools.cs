@@ -84,8 +84,9 @@ namespace UnityExt.Tools {
             EditorApplication.CallbackFunction on_build_loop = null;
 
             on_build_loop = 
-            delegate() {                
-                if(m_build_cancel || (m_build_progress>=1f))       { EditorApplication.update -= on_build_loop; EditorUtility.ClearProgressBar();  return; }                
+            delegate() {         
+                bool is_compiling = EditorApplication.isCompiling;
+                if(is_compiling || m_build_cancel || (m_build_progress>=1f))       { EditorApplication.update -= on_build_loop; EditorUtility.ClearProgressBar();  return; }                
                 m_build_cancel = EditorUtility.DisplayCancelableProgressBar("Building UnityExt Docs",m_build_step,m_build_progress);
             };
 
