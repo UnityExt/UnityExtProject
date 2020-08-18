@@ -621,10 +621,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70e399be176269e468192ad3e010a341, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  type: 11
+  type: 12
   content: {fileID: 840084255}
   debugCube: {fileID: 9041376337521154891, guid: b34ae9b3946aa6e4fbdb4995578aa773,
     type: 3}
+  debugCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
   consoleField: {fileID: 283024827}
   titleField: {fileID: 1635480454}
   progressBarField: {fileID: 2067584763}

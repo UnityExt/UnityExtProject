@@ -237,7 +237,8 @@ namespace UnityExt.Core.Examples {
             RotationInstancesJob,
             TimerBasic,
             TimerSteps,
-            TimerAtomic,
+            TimerAtomicBasic,
+            InterpolatorBasic,
         }
 
         #endregion
@@ -256,6 +257,11 @@ namespace UnityExt.Core.Examples {
         /// Reference to the debug cube.
         /// </summary>
         public GameObject debugCube;
+
+        /// <summary>
+        /// Reference to an animation curve for debugging.
+        /// </summary>
+        public AnimationCurve debugCurve = AnimationCurve.EaseInOut(0f,0f,1f,1f);
 
         /// <summary>
         /// Reference to the console logging field.
@@ -572,9 +578,9 @@ namespace UnityExt.Core.Examples {
                 break;
                 #endregion
 
-                #region TimerAtomic
+                #region TimerAtomicBasic
                 //"Atomic" timers uses the system file system to store a time stamp and help keep track of time in the long run execution of the game.
-                case CaseTypeFlag.TimerAtomic: {
+                case CaseTypeFlag.TimerAtomicBasic: {
                     //Clock id
                     string clock_id = "atomic-clock-example";
                     //Init datetimes
@@ -583,38 +589,105 @@ namespace UnityExt.Core.Examples {
                     //Get or Create an atomic clock by id.
                     time_stamp = Timer.GetAtomicTimestamp(clock_id);
                     time_span  = Timer.GetAtomicClockElapsed(clock_id);
-                    
+                    //Offset seconds to be added to live timer and progress the atomic timestamp in realtime.
+                    float offset_seconds = (float)(time_span.TotalMilliseconds/1000.0)-2f;                    
+                    //Frame counter to refresh the time stamp
+                    int refresh_timeout  = 0;
+                    //Tracking timer (use thread based for more precision)
+                    Timer timer = new Timer(Timer.Type.System);
+                    timer.Start();
                     //Little UI loop
                     Activity.Run(delegate(Activity a){  
                         
                         ClearLog();
                         Log("=== Simple Atomic Clock ===");
+                        Log("Run this demo and try again a few hours later.");
+                        Log("===");
                         Log("[A] Refresh Clock");                        
                         Log("[S] Clear Clock");                        
                         Log(" ");
                         Log("=== Atomic Clock Path ===");
                         Log($"<size=10>{Timer.atomicClockFolder}</size>");
-
+                        //*/
                         bool will_refresh = false;
 
                         if(Input.GetKeyUp(KeyCode.A)) will_refresh = true;
                         if(Input.GetKeyUp(KeyCode.S)) { Timer.ClearAtomicTimestamp(clock_id); will_refresh=true; }
                         
+                        Log($"<size=14>=== TimeStamp ===</size>");
+                        Log(time_stamp.ToString("yyyyMMdd / HH:mm:ss"));
+                        Log($"<size=14>=== Elapsed (Timer+Timestamp) ===</size>");
+                        System.TimeSpan ts = System.TimeSpan.FromSeconds(timer.elapsed+offset_seconds);
+                        string vh  = ts.TotalHours<=0f ? "" : ts.TotalHours.ToString("0");
+                        string vm  = ts.Minutes.ToString("0");
+                        string vs  = ts.Seconds.ToString("0");
+                        string vms = ts.Milliseconds.ToString("0");
+                        Log($"{vh}h {vm}min {vs}s {vms}ms");
+
+                        //Atomic timestamp will build up clock difference to 'real world'
+                        //Sync each 120 frames
+                        //It will snap the value, definite solution would be a bit more harder though.
+                        refresh_timeout++;                        
+                        if(refresh_timeout>=(60*2)) {
+                            refresh_timeout=0;
+                            will_refresh = true;
+                        }
+
                         if(will_refresh) {
                             time_stamp = Timer.GetAtomicTimestamp(clock_id);
                             time_span  = Timer.GetAtomicClockElapsed(clock_id);
+                            offset_seconds = (float)(time_span.TotalMilliseconds/1000.0)-4f;                            
                         }
-                        
-                        Log($"<size=14>=== TimeStamp ===</size>");
-                        Log(time_stamp.ToString("yy-MM-dd / HH:mm:ss"));
-                        Log($"<size=14>=== Elapsed ===</size>");
-                        string vh = time_span.TotalHours<=0f ? "" : time_span.TotalHours.ToString("0");
-                        string vm = time_span.Minutes.ToString("0");
-                        string vs = time_span.Seconds.ToString("0");
-                        Log($"{vh}h {vm}min {vs}s");
-                        
+
                         return true;
                     });
+
+                }
+                break;
+                #endregion
+
+                #region InterpolatorBasic
+                //Example showing the basics of the interpolator classes.
+                //They can help making easy to mix values and apply these changes of any object and property.
+                case CaseTypeFlag.InterpolatorBasic: {
+                    //Create simple cube
+                    GameObject cube_target = Instantiate(debugCube);
+                    cube_target.transform.parent = content;
+                    cube_target.name = "cube";                    
+                    //Duplicate its material
+                    MeshRenderer mr = cube_target.GetComponent<MeshRenderer>();
+                    //Clone the material for runtime changes
+                    string mn = mr.sharedMaterial.name;
+                    mr.sharedMaterial = Instantiate(mr.sharedMaterial);
+                    mr.sharedMaterial.name = mn;
+                    //Create all interpolators.
+                    ColorInterpolator      color_lerp = Interpolator.Get<Color>()      as ColorInterpolator;
+                    Vector3Interpolator    pos_lerp   = Interpolator.Get<Vector3>()    as Vector3Interpolator;
+                    QuaternionInterpolator rot_lerp   = Interpolator.Get<Quaternion>() as QuaternionInterpolator;
+                    //Set interpolation range and easing
+                    color_lerp.Set(mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);                    
+                    pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
+                    rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
+                    //Angle to increment and apply sin/cos
+                    float angle = 0f;
+                    //Runs the loop
+                    Activity.Run("interpolator-example",
+                    delegate(Activity a) {                         
+                        angle += Time.deltaTime * 90f;
+                        float sin;
+                        //Apply interpolations                        
+                        sin = Mathf.Sin((angle/5f) * Mathf.Deg2Rad);  sin = (sin+1f)*0.5f;
+                        color_lerp.Lerp(sin);
+                        sin = Mathf.Sin((angle/10f) * Mathf.Deg2Rad); sin = (sin+1f)*0.5f;
+                        pos_lerp.Lerp(sin);
+                        sin = Mathf.Sin((angle) * Mathf.Deg2Rad);     sin = (sin+1f)*0.5f;
+                        rot_lerp.Lerp(sin);
+                        return true;
+                    }, Activity.Context.Update);
+
+                    ClearLog();
+                    Log("=== Simple Interpolators ===");
+                    Log("Try modifying the curve in the inspector.");
 
                 }
                 break;
