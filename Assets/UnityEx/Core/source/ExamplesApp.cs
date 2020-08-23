@@ -430,10 +430,17 @@ namespace UnityExt.Core.Examples {
                 case CaseTypeFlag.RotationInstancesJob:
                 case CaseTypeFlag.RotationInstancesThreaded:
                 case CaseTypeFlag.RotationInstancesMono: {
+                    //Disable vsync to see fps.
+                    QualitySettings.vSyncCount = 0;
                     //Init basic layout data
-                    int cx = 19;
-                    int cz = 19;
-                    int cy = 19;
+                    int cx = 30;
+                    int cz = 30;
+                    int cy = 30;
+                    #if UNITY_WEBGL
+                    cx=15;
+                    cy=15;
+                    cz=15;
+                    #endif
                     int max_cubes = cx*cy*cz;
                     float csm = 2f;
                     //cube size
@@ -478,7 +485,9 @@ namespace UnityExt.Core.Examples {
                                 instances.Add(rc);
                             }
                             k++;
-                            if(k>=max_cubes) break;
+                            float r = Mathf.Clamp01((float)k/(float)max_cubes);
+                            SetProgress(r);
+                            if(k>=max_cubes) { break; }
                         }                        
                         return true;
                     });
