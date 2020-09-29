@@ -7,6 +7,7 @@ using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
 using UnityEngine.UI;
+using System.Text;
 
 namespace UnityExt.Core.Examples {
 
@@ -240,6 +241,7 @@ namespace UnityExt.Core.Examples {
             TimerAtomicBasic,
             InterpolatorBasic,
             TweenBasic,
+            TweenRun,
         }
 
         #endregion
@@ -283,6 +285,11 @@ namespace UnityExt.Core.Examples {
         /// Reference to the progress bar text field.
         /// </summary>
         public Text progressField;
+
+        /// <summary>
+        /// Internals.
+        /// </summary>
+        private StringBuilder m_log_sb;
 
         public void Run(CaseTypeFlag p_type) {
             type = p_type;
@@ -414,6 +421,7 @@ namespace UnityExt.Core.Examples {
                         Log($"[D] Starts Job");
                         Log($"============");
                         Log(string.Join("\n",job_results));
+                        ApplyLog();
 
                         return true;
                     });
@@ -499,6 +507,7 @@ namespace UnityExt.Core.Examples {
                         case CaseTypeFlag.RotationInstancesThreaded: Log($"Step: Thread");   Log($"Rotate: Update"); break;
                         case CaseTypeFlag.RotationInstancesJob:      Log($"Step: UnityJob"); Log($"Rotate: Update"); break;
                     }                    
+                    ApplyLog();
                 }
                 break;
                 #endregion
@@ -535,6 +544,8 @@ namespace UnityExt.Core.Examples {
 
                         Log($"<size=23>{t}</size>");
 
+                        ApplyLog();
+
                         SetProgress(timer.progress);
                         //*/
                         return true;
@@ -558,6 +569,7 @@ namespace UnityExt.Core.Examples {
                         if(log.Count>70) log.RemoveAt(0);
                         ClearLog();
                         Log(string.Join("\n",log));
+                        ApplyLog();
                         return false;
                     };
                     //Called per step
@@ -571,6 +583,7 @@ namespace UnityExt.Core.Examples {
                         if(log.Count>70) log.RemoveAt(0);
                         ClearLog();
                         Log(string.Join("\n",log));
+                        ApplyLog();
                         return true;
                     };
                     //Called after the last step.
@@ -580,6 +593,7 @@ namespace UnityExt.Core.Examples {
                         if(log.Count>70) log.RemoveAt(0);
                         ClearLog();
                         Log(string.Join("\n",log));
+                        ApplyLog();
                     };
                     //Starts the timer with 3s of delay.
                     timer.Start(3f);
@@ -600,12 +614,15 @@ namespace UnityExt.Core.Examples {
                     time_stamp = Timer.GetAtomicTimestamp(clock_id);
                     time_span  = Timer.GetAtomicClockElapsed(clock_id);
                     //Offset seconds to be added to live timer and progress the atomic timestamp in realtime.
-                    float offset_seconds = (float)(time_span.TotalMilliseconds/1000.0)-2f;                    
+                    double offset_seconds = (time_span.TotalMilliseconds/1000.0);
                     //Frame counter to refresh the time stamp
                     int refresh_timeout  = 0;
-                    //Tracking timer (use thread based for more precision)
-                    Timer timer = new Timer(TimerType.System);
-                    timer.Start();
+                    //Local timer counter
+                    double t = offset_seconds;
+                    //Refresh flag
+                    bool will_refresh = true;
+                    //Atomic file folder
+                    string atomic_clk_folder = Timer.atomicClockFolder;
                     //Little UI loop
                     Activity.Run(delegate(Activity a){  
                         
@@ -617,36 +634,41 @@ namespace UnityExt.Core.Examples {
                         Log("[S] Clear Clock");                        
                         Log(" ");
                         Log("=== Atomic Clock Path ===");
-                        Log($"<size=10>{Timer.atomicClockFolder}</size>");
+                        Log($"<size=10>{atomic_clk_folder}</size>");
                         //*/
-                        bool will_refresh = false;
-
+                        
                         if(Input.GetKeyUp(KeyCode.A)) will_refresh = true;
                         if(Input.GetKeyUp(KeyCode.S)) { Timer.ClearAtomicTimestamp(clock_id); will_refresh=true; }
                         
                         Log($"<size=14>=== TimeStamp ===</size>");
                         Log(time_stamp.ToString("yyyyMMdd / HH:mm:ss"));
                         Log($"<size=14>=== Elapsed (Timer+Timestamp) ===</size>");
-                        System.TimeSpan ts = System.TimeSpan.FromSeconds(timer.elapsed+offset_seconds);
-                        string vh  = ts.TotalHours<=0f ? "" : ts.TotalHours.ToString("0");
-                        string vm  = ts.Minutes.ToString("0");
-                        string vs  = ts.Seconds.ToString("0");
-                        string vms = ts.Milliseconds.ToString("0");
-                        Log($"{vh}h {vm}min {vs}s {vms}ms");
+                        double dt = offset_seconds-t;
+                        //If small delta increment with update dt
+                        if(dt<4f) {
+                            t+= Time.deltaTime;
+                        }
+                        //Otherwise interpolate to next offset
+                        else {
+                            t = t + ((dt) * (Time.deltaTime/4.2f));                        
+                        }                        
+                        System.TimeSpan ts = System.TimeSpan.FromSeconds(t);                        
+                        Log($"{ts.Days}d {ts.Hours}h {ts.Minutes}min {ts.Seconds}s {ts.Milliseconds.ToString().PadLeft(3)}ms");
 
                         //Atomic timestamp will build up clock difference to 'real world'
-                        //Sync each 120 frames
+                        //Sync each ~5s
                         //It will snap the value, definite solution would be a bit more harder though.
                         refresh_timeout++;                        
-                        if(refresh_timeout>=(60*2)) {
+                        if(refresh_timeout>=(60*5)) {
                             refresh_timeout=0;
-                            will_refresh = true;
+                            will_refresh = true;                            
                         }
 
                         if(will_refresh) {
                             time_stamp = Timer.GetAtomicTimestamp(clock_id);
                             time_span  = Timer.GetAtomicClockElapsed(clock_id);
-                            offset_seconds = (float)(time_span.TotalMilliseconds/1000.0)-4f;                            
+                            offset_seconds = (time_span.TotalMilliseconds/1000.0);
+                            will_refresh = false;
                         }
 
                         return true;
@@ -681,9 +703,9 @@ namespace UnityExt.Core.Examples {
                     pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
                     rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
                     //Create all tweens setup with 'ids' for cancelling and clamp animation wrapping to stop after completion.
-                    Tween<Color>      color_tween = new Tween<Color>     ("tween-b",mr.sharedMaterial,"_Color",       Color.green,           Color.red,                        1f,TweenWrap.Clamp,debugCurve);
-                    Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform,     "position",     new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),           1f,TweenWrap.Clamp,debugCurve);
-                    Tween<Quaternion> rot_tween   = new Tween<Quaternion>("tween-b",  mr.transform,     "localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),1f,TweenWrap.Clamp,debugCurve);
+                    Tween<Color>      color_tween = new Tween<Color>     ("tween-b",  mr.sharedMaterial,"_Color",       Color.green,           Color.red,                        1f,AnimationWrapMode.Clamp,debugCurve);
+                    Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform,     "position",     new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),           1f,AnimationWrapMode.Clamp,Tween.Elastic.OutBig);
+                    Tween<Quaternion> rot_tween   = new Tween<Quaternion>("tween-b",  mr.transform,     "localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),1f,AnimationWrapMode.Clamp,debugCurve);
                     
                     //Angle to increment and apply sin/cos
                     float angle = 0f;
@@ -732,12 +754,12 @@ namespace UnityExt.Core.Examples {
                                 Log("[C] Wrap Pinpong");
                                 Log("[V] Pause");
                                 Log("======");
-                                Log("Wrap: "+color_tween.wrap);
-                                Log("Speed: "+color_tween.speed.ToString("0.0")+"x");
-                                Log("Paused: "+color_tween.paused);
-                                Log("Color: "+color_tween.state);
-                                Log("Position: "+pos_tween.state);
-                                Log("Rotation: "+rot_tween.state);
+                                Log("Wrap: ",    false); Log(color_tween.wrap.ToString());
+                                Log("Speed: ",   false); Log(color_tween.speed.ToString("0.0")+"x".ToString());
+                                Log("Paused: ",  false); Log(color_tween.paused.ToString());
+                                Log("Color: ",   false); Log(color_tween.state.ToString());
+                                Log("Position: ",false); Log(pos_tween.state.ToString());
+                                Log("Rotation: ",false); Log(rot_tween.state.ToString());
                                 
                                 if(Input.GetKeyDown(KeyCode.Q)) color_tween.Restart();
                                 if(Input.GetKeyDown(KeyCode.W)) pos_tween.Restart();
@@ -750,9 +772,9 @@ namespace UnityExt.Core.Examples {
                                 if(Input.GetKeyDown(KeyCode.H)) { Tween.Clear("tween-a"); }
                                 if(Input.GetKeyDown(KeyCode.J)) { Tween.Clear("tween-b"); }
                                 if(Input.GetKeyDown(KeyCode.K)) { Tween.Clear(mr.transform,"position"); }
-                                if(Input.GetKeyDown(KeyCode.Z)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=TweenWrap.Clamp;   }
-                                if(Input.GetKeyDown(KeyCode.X)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=TweenWrap.Repeat;  }
-                                if(Input.GetKeyDown(KeyCode.C)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=TweenWrap.Pinpong; }
+                                if(Input.GetKeyDown(KeyCode.Z)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Clamp;   }
+                                if(Input.GetKeyDown(KeyCode.X)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Repeat;  }
+                                if(Input.GetKeyDown(KeyCode.C)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Pingpong; }
                                 if(Input.GetKeyDown(KeyCode.V)) { color_tween.paused = pos_tween.paused = (rot_tween.paused = !rot_tween.paused); }
 
                             }
@@ -761,12 +783,63 @@ namespace UnityExt.Core.Examples {
 
                         }
 
+                        ApplyLog();
+
                         return true;
                     }, ActivityContext.Update);
 
                 }
                 break;
                 #endregion
+
+                #region Tween Run
+                //Example showing how to create tweens using the static methods of the class                
+                case CaseTypeFlag.TweenRun: {
+                    //Create simple cube
+                    GameObject cube_target = Instantiate(debugCube);
+                    cube_target.transform.parent = content;
+                    cube_target.name = "cube";
+                    //Locals
+                    float speed = 1f;
+                    //Runs the loop
+                    Activity.Run("tween-run-example",
+                    delegate(Activity a) {
+
+                        //ClearLog();
+                        //Log("=== Tween Run Methods ===");
+                        
+                        switch(type) {
+
+                            #region TweenRun
+                            case CaseTypeFlag.TweenRun: {
+                                //Log("[Q] Scale Up");
+                                //Log("[W] Scale Down");                                
+                                //Log("[A] Speed -0.1");
+                                //Log("[S] Speed +0.1");
+                                //Log("[Z] Stop");                                
+                                //Log("[X] Pause");
+                                //Log("======");         
+                                //Log("Speed: ",   false); Log(speed.ToString("0.0")+"x".ToString());
+                                Tween tw = null;
+                                if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,Tween.Elastic.OutBig);   tw.speed = speed; }
+                                if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,Tween.Elastic.OutSmall); tw.speed = speed; }
+                                if(Input.GetKeyDown(KeyCode.A)) { speed -= 0.1f; speed = Mathf.Max(speed,0.1f); }
+                                if(Input.GetKeyDown(KeyCode.S)) { speed += 0.1f; speed = Mathf.Max(speed,0.1f); }                                
+                                if(Input.GetKeyDown(KeyCode.Z)) { Tween.Clear(cube_target.transform); }
+                                if(Input.GetKeyDown(KeyCode.V)) { if(tw!=null) tw.paused = !tw.paused; }
+                            }
+                            break;
+                            #endregion
+
+                        }
+                        //ApplyLog();
+                        return true;
+                    }, ActivityContext.Update);
+
+                }
+                break;
+                #endregion
+
 
             }
         }
@@ -775,6 +848,7 @@ namespace UnityExt.Core.Examples {
         /// CTOR.
         /// </summary>
         protected void Start() {
+            if(m_log_sb==null) m_log_sb = new StringBuilder();
             ClearLog();
             SetProgress(0f);
             if(type!= CaseTypeFlag.None) Run(type);
@@ -786,18 +860,30 @@ namespace UnityExt.Core.Examples {
         /// Clears the log
         /// </summary>
         public void ClearLog() {
-            if(!consoleField) return;            
+            if(!consoleField) return;               
             consoleField.text = "";            
+            m_log_sb.Clear();
         }
 
         /// <summary>
         /// Appends a new log.
         /// </summary>
         /// <param name="p_log"></param>
-        public void Log(string p_log) {
+        public void Log(string p_log,bool p_newline=true) {
             if(!consoleField) return;            
-            consoleField.text += p_log;
-            consoleField.text += "\n";
+            m_log_sb.Append(p_log);
+            if(p_newline) m_log_sb.Append("\n");
+            //consoleField.text += p_log;
+            //consoleField.text += "\n";
+        }
+
+        /// <summary>
+        /// Applies the written log.
+        /// </summary>
+        public void ApplyLog() {
+            if(!consoleField) return;
+            consoleField.text += m_log_sb.ToString();
+            m_log_sb.Clear();
         }
 
         /// <summary>
