@@ -805,21 +805,21 @@ namespace UnityExt.Core.Examples {
                     Activity.Run("tween-run-example",
                     delegate(Activity a) {
 
-                        //ClearLog();
-                        //Log("=== Tween Run Methods ===");
+                        ClearLog();
+                        Log("=== Tween Run Methods ===");
                         
                         switch(type) {
 
                             #region TweenRun
                             case CaseTypeFlag.TweenRun: {
-                                //Log("[Q] Scale Up");
-                                //Log("[W] Scale Down");                                
-                                //Log("[A] Speed -0.1");
-                                //Log("[S] Speed +0.1");
-                                //Log("[Z] Stop");                                
-                                //Log("[X] Pause");
-                                //Log("======");         
-                                //Log("Speed: ",   false); Log(speed.ToString("0.0")+"x".ToString());
+                                Log("[Q] Scale Up");
+                                Log("[W] Scale Down");                                
+                                Log("[A] Speed -0.1");
+                                Log("[S] Speed +0.1");
+                                Log("[Z] Stop");                                
+                                Log("[X] Pause");
+                                Log("======");         
+                                Log("Speed: ",   false); Log(speed.ToString("0.0")+"x".ToString());
                                 Tween tw = null;
                                 if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,Tween.Elastic.OutBig);   tw.speed = speed; }
                                 if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,Tween.Elastic.OutSmall); tw.speed = speed; }
@@ -832,7 +832,7 @@ namespace UnityExt.Core.Examples {
                             #endregion
 
                         }
-                        //ApplyLog();
+                        ApplyLog();
                         return true;
                     }, ActivityContext.Update);
 
