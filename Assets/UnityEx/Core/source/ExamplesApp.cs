@@ -6,10 +6,14 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
+using UnityExt.Sys;
 using UnityEngine.UI;
 using System.Text;
+using System.IO;
+using System.IO.Compression;
+using BitStream = UnityExt.Sys.BitStream;
 
-namespace UnityExt.Core.Examples {
+namespace UnityExt.Project {
 
     /// <summary>
     /// Perform a few examples of activity usage.
@@ -242,6 +246,7 @@ namespace UnityExt.Core.Examples {
             InterpolatorBasic,
             TweenBasic,
             TweenRun,
+            BitStreamBasic
         }
 
         #endregion
@@ -438,9 +443,9 @@ namespace UnityExt.Core.Examples {
                     //Disable vsync to see fps.
                     QualitySettings.vSyncCount = 0;
                     //Init basic layout data
-                    int cx = 30;
-                    int cz = 30;
-                    int cy = 30;
+                    int cx = 15;
+                    int cz = 15;
+                    int cy = 15;
                     #if UNITY_WEBGL
                     cx=15;
                     cy=15;
@@ -812,19 +817,23 @@ namespace UnityExt.Core.Examples {
 
                             #region TweenRun
                             case CaseTypeFlag.TweenRun: {
-                                Log("[Q] Scale Up");
-                                Log("[W] Scale Down");                                
-                                Log("[A] Speed -0.1");
-                                Log("[S] Speed +0.1");
+                                Log("[Q] Scale Up / 2s Delay");
+                                Log("[W] Scale Down / 2s Delay");                                
+                                Log("[E] Scale Up");
+                                Log("[R] Scale Down");                                
+                                Log("[A] Speed -0.025");
+                                Log("[S] Speed +0.025");
                                 Log("[Z] Stop");                                
                                 Log("[X] Pause");
                                 Log("======");         
-                                Log("Speed: ",   false); Log(speed.ToString("0.0")+"x".ToString());
+                                Log("Speed: ",   false); Log(speed.ToString("0.00")+"x".ToString());
                                 Tween tw = null;
-                                if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,Tween.Elastic.OutBig);   tw.speed = speed; }
-                                if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,Tween.Elastic.OutSmall); tw.speed = speed; }
-                                if(Input.GetKeyDown(KeyCode.A)) { speed -= 0.1f; speed = Mathf.Max(speed,0.1f); }
-                                if(Input.GetKeyDown(KeyCode.S)) { speed += 0.1f; speed = Mathf.Max(speed,0.1f); }                                
+                                if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,2f,Tween.Elastic.OutBig);   tw.speed = 1f; }
+                                if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,2f,Tween.Elastic.OutSmall); tw.speed = 1f; }
+                                if(Input.GetKeyDown(KeyCode.E)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,0f,Tween.Elastic.OutBig);   tw.speed = speed; }
+                                if(Input.GetKeyDown(KeyCode.R)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,0f,Tween.Elastic.OutSmall); tw.speed = speed; }
+                                if(Input.GetKeyDown(KeyCode.A)) { speed -= 0.025f; speed = Mathf.Max(speed,0.025f); }
+                                if(Input.GetKeyDown(KeyCode.S)) { speed += 0.025f; speed = Mathf.Max(speed,0.025f); }                                
                                 if(Input.GetKeyDown(KeyCode.Z)) { Tween.Clear(cube_target.transform); }
                                 if(Input.GetKeyDown(KeyCode.V)) { if(tw!=null) tw.paused = !tw.paused; }
                             }
@@ -835,6 +844,41 @@ namespace UnityExt.Core.Examples {
                         ApplyLog();
                         return true;
                     }, ActivityContext.Update);
+
+                }
+                break;
+                #endregion
+
+                #region BitStreamBasic
+                //Simple BitStream usage
+                case CaseTypeFlag.BitStreamBasic: {
+
+                    string fp  = $"{Application.persistentDataPath}/output.txt".Replace("\\","/").Replace("//","/");
+                    string zfp = $"{Application.persistentDataPath}/output.txt.z".Replace("\\","/").Replace("//","/");
+
+                    
+                    if(File.Exists(fp)) File.Delete(fp);
+
+                    BitStream bs = new BitStream(File.Open(fp, FileMode.CreateNew));
+
+                    bs.Write(45.62f,50f,-30f);
+                    bs.Write(11.6f,10f, 16f,3);
+
+                    bs.Flush();
+
+                    bs.BitPosition = 0;
+
+                    float v = 0f;
+
+                    bs.Read(out v,50f,-30f);
+                    Debug.Log(v);
+                    bs.Read(out v,10f, 16f,3);
+                    Debug.Log(v);
+                    
+                    bs.Close();
+                    //*/
+
+                    UnityEditor.EditorUtility.RevealInFinder(fp);
 
                 }
                 break;

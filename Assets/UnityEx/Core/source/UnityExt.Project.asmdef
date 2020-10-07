@@ -1,6 +1,7 @@
 {
-    "name": "UnityExt.Project.Core",
+    "name": "UnityExt.Project",
     "references": [
+        "UnityExt.Sys",
         "UnityExt.Core"
     ],
     "optionalUnityReferences": [],

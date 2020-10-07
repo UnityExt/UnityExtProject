@@ -4,7 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityExt.Tools {
+namespace UnityExt.Project {
 
     /// <summary>
     /// Auxiliary class to make DocFX calls and generate the documentation for the UnityExt project.
