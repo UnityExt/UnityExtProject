@@ -4,3 +4,6 @@
 [submodule "Documentation/unityext.github.io"]
 	path = Documentation/unityext.github.io
 	url = https://github.com/UnityExt/unityext.github.io.git
+[submodule "UnityExt System"]
+	path = Packages/UnityExt System
+	url = https://github.com/UnityExt/System.git
