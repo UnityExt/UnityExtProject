@@ -6,12 +6,18 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
+using UnityExt.Core.IO;
+using UnityExt.Core.Net;
+using UnityExt.Core.Motion;
 using UnityExt.Sys;
 using UnityEngine.UI;
 using System.Text;
 using System.IO;
-using System.IO.Compression;
+
 using BitStream = UnityExt.Sys.BitStream;
+
+#pragma warning disable CS4014
+#pragma warning disable CS1998
 
 namespace UnityExt.Project {
 
@@ -246,7 +252,10 @@ namespace UnityExt.Project {
             InterpolatorBasic,
             TweenBasic,
             TweenRun,
-            BitStreamBasic
+            TweenAwait,
+            BitStreamBasic,
+            JsonFileSerialization,
+            Base64FileSerialization
         }
 
         #endregion
@@ -292,6 +301,26 @@ namespace UnityExt.Project {
         public Text progressField;
 
         /// <summary>
+        /// Reference to an image to test.
+        /// </summary>
+        public Texture2D debugImage;
+
+        /// <summary>
+        /// Debug field to check images
+        /// </summary>
+        public RawImage  debugRawImageUI;
+
+        /// <summary>
+        /// Debug field to check images
+        /// </summary>
+        public Image  debugImageUI;
+
+        /// <summary>
+        /// Helper to play audio.
+        /// </summary>
+        public AudioSource debugAudio;
+
+        /// <summary>
         /// Internals.
         /// </summary>
         private StringBuilder m_log_sb;
@@ -300,6 +329,148 @@ namespace UnityExt.Project {
             type = p_type;
             if(titleField) titleField.text = "UnityExt / "+type.ToString();
             switch(type) {
+
+                case CaseTypeFlag.None: { 
+
+                    //https://api-dev.drlgame.com/maps/updated/?token=eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9
+
+                    WebRequest.InitDataFileSystem();
+                    WebRequestCache.Clear();
+                        
+                    WebRequest req = null;
+
+                    System.Action<bool> run_req =
+                    async
+                    delegate(bool p_file) {
+
+                        req = new WebRequest();                        
+                        if(!p_file) {
+                            req.query.Clear();
+                            req.query.Add("str","some-text");
+                            req.query.AddBase64("json-b64","{ a: 1, b: 2}");
+                            req.query.AddBase64("bin-b64", new byte[] { 0,1,2,3,4,5 });
+                            req.query.Add("table",new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f} });
+                            req.query.Add("list", new object[] { "a",1 ,"b","txt","c",2.345f });
+                            req.query.Add("","list-noidx","0");
+                            req.query.Add("","list-noidx","1");
+                            req.query.Add("","list-noidx","2");
+                            req.query.Add("","list-noidx","3");
+                        }
+                        else {
+                            /*
+                            StreamWriter raw_body = new StreamWriter(new MemoryStream());
+                            BinaryWriter raw_bin  = new BinaryWriter(raw_body.BaseStream);
+                            raw_body.WriteLine("This body has no multipart data"); raw_body.Flush();
+                            raw_body.WriteLine("Just free data around"); raw_body.Flush();
+                            raw_body.WriteLine(true); raw_body.Flush();
+                            raw_body.WriteLine("--"); raw_body.Flush();
+                            raw_bin.Write(10.123f); raw_bin.Flush();
+                            raw_body.WriteLine("\n--"); raw_body.Flush();
+                            raw_bin.Write(new byte[] { 65,66,67,68,69 }); raw_bin.Flush();
+                            raw_body.WriteLine("\n--");                             
+                            raw_body.Flush();
+                            raw_body.BaseStream.Position=0;
+                            req.request.body.stream = raw_body.BaseStream;
+                            //*/
+
+                            req.request.body.AddField("str","some-text");
+                            req.request.body.AddBase64("json-b64","{ a: 1, b: 2}");
+                            req.request.body.AddBase64("bin-b64", new byte[] { 0,1,2,3,4,5 });
+                            req.request.body.AddFields("table",new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f} });
+                            req.request.body.AddFields("list", new object[] { "a",1 ,"b","txt","c",2.345f });
+                            req.request.body.AddField("","list-noidx","0");
+                            req.request.body.AddField("","list-noidx","1");
+                            req.request.body.AddField("","list-noidx","2");
+                            req.request.body.AddField("","list-noidx","3");
+                            req.request.body.AddJson("json-obj", new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f} });
+                            req.request.body.AddJson("json-arr", new object[] { "a",1 ,"b","txt","c",2.345f });
+                            req.request.body.AddPNG("img-png", debugImage);
+                            req.request.body.AddJPEG("img-jpg",debugImage);
+                            //*/
+                        }
+                        
+
+                        req.request.header.Add("X-Game-Version","2.0.0");
+
+                        req.ttl     = 0.5f;
+                        req.timeout = 50f;
+                        WebRequestAttrib f = p_file ? (WebRequestAttrib.FileBuffer | WebRequestAttrib.FileCache) : (WebRequestAttrib.MemoryBuffer | WebRequestAttrib.MemoryBuffer);
+                        req.OnRequestEvent =
+                        delegate(WebRequest p_req) {
+                            float pu = p_req.request ==null ? 0f : p_req.request.progress;
+                            float pd = p_req.response==null ? 0f : p_req.response.progress;                            
+                            switch(p_req.state) {
+
+                                case WebRequestState.DownloadProgress:
+                                case WebRequestState.UploadProgress: {
+                                    SetProgress(p_req.progress);
+                                }
+                                break;
+
+                                case WebRequestState.Cached:
+                                case WebRequestState.Success: {
+                                    Debug.Log($"{req.state} | cached[{req.cached}] | {req.GetURL()}\n{req.GetURL(true)}");                                    
+                                }
+                                break;
+
+                                case WebRequestState.Cancel:
+                                case WebRequestState.Error:
+                                case WebRequestState.Timeout: {
+                                    Debug.Log($"{req.state} | error[{req.error}]");
+                                }
+                                break;
+                            }
+                        };
+
+                        //req.Get(p_file ? "https://images.hdqwalls.com/download/retro-big-sunset-5k-9t-2048x1152.jpg" : "https://images.hdqwalls.com/wallpapers/big-sur-5k-px.jpg");
+                        //req.Get("https://api-dev.drlgame.com/maps/updated/",f);
+                        //req.Get("https://google.com",f);
+                        //req.Get("https://file-examples-com.github.io/uploads/2017/11/file_example_OOG_2MG.ogg");
+
+                        if(p_file) {
+                            req.Post("https://unityex.requestcatcher.com/",f);
+                        }
+                        else {
+                            req.Get("https://unityex.requestcatcher.com/",f);
+                        }
+                        
+                    };
+
+                
+                    Activity.Run(delegate(Activity a) { 
+                        string cmd = "";                        
+                        if(Input.GetKeyDown(KeyCode.Alpha1)) cmd = "run-file";
+                        if(Input.GetKeyDown(KeyCode.Alpha2)) cmd = "run-memory";
+                        if(Input.GetKeyDown(KeyCode.Alpha3)) cmd = "parse-sync";
+                        if(Input.GetKeyDown(KeyCode.Alpha4)) cmd = "parse-async";
+                        if(Input.GetKeyDown(KeyCode.Alpha0)) cmd = "open";
+                        if(Input.GetKeyDown(KeyCode.Alpha9)) cmd = "cancel";
+                        switch(cmd) {
+                            case "run-file":    run_req(true);  break;
+                            case "run-memory":  run_req(false); break;
+                            case "parse-sync": {
+                                if(req==null) break;
+                                Dictionary<string,object> d = req.GetJson<Dictionary<string,object>>();
+                                Debug.Log(d.Count);
+                            }
+                            break;
+                            case "parse-async": {
+                                if(req==null) break;
+                                req.GetJsonAsync<Dictionary<string,object>>(delegate(Dictionary<string,object> d) { 
+                                    Debug.Log(d.Count);
+                                    req = null;
+                                });                                
+                            }
+                            break;
+                            #if UNITY_EDITOR
+                            case "open": UnityEditor.EditorUtility.RevealInFinder(WebRequest.DataPath); break;
+                            #endif
+                            case "cancel": if(req!=null) req.Cancel(); break;
+                        }
+                        return true;
+                    });
+
+                } break;
 
                 #region Basic
                 //Simple activity loop rotating a cube
@@ -627,8 +798,9 @@ namespace UnityExt.Project {
                     //Refresh flag
                     bool will_refresh = true;
                     //Atomic file folder
-                    string atomic_clk_folder = Timer.atomicClockFolder;
+                    string atomic_clk_folder = Timer.AtomicClockPath;
                     //Little UI loop
+                    Activity atomic_clock_loop =
                     Activity.Run(delegate(Activity a){  
                         
                         ClearLog();
@@ -643,7 +815,7 @@ namespace UnityExt.Project {
                         //*/
                         
                         if(Input.GetKeyUp(KeyCode.A)) will_refresh = true;
-                        if(Input.GetKeyUp(KeyCode.S)) { Timer.ClearAtomicTimestamp(clock_id); will_refresh=true; }
+                        if(Input.GetKeyUp(KeyCode.S)) { Timer.ClearAtomicTimestamp(clock_id); t = 0; will_refresh=true; }
                         
                         Log($"<size=14>=== TimeStamp ===</size>");
                         Log(time_stamp.ToString("yyyyMMdd / HH:mm:ss"));
@@ -658,7 +830,7 @@ namespace UnityExt.Project {
                             t = t + ((dt) * (Time.deltaTime/4.2f));                        
                         }                        
                         System.TimeSpan ts = System.TimeSpan.FromSeconds(t);                        
-                        Log($"{ts.Days}d {ts.Hours}h {ts.Minutes}min {ts.Seconds}s {ts.Milliseconds.ToString().PadLeft(3)}ms");
+                        Log($"{ts.Days.ToString("00")}d {ts.Hours.ToString("00")}h {ts.Minutes.ToString("00")}min {ts.Seconds.ToString("00")}s {ts.Milliseconds.ToString("000")}ms");
 
                         //Atomic timestamp will build up clock difference to 'real world'
                         //Sync each ~5s
@@ -676,9 +848,11 @@ namespace UnityExt.Project {
                             will_refresh = false;
                         }
 
+                        ApplyLog();
+
                         return true;
                     });
-
+                    atomic_clock_loop.id = "atomic-clock-basic";
                 }
                 break;
                 #endregion
@@ -700,13 +874,16 @@ namespace UnityExt.Project {
                     mr.sharedMaterial = Instantiate(mr.sharedMaterial);
                     mr.sharedMaterial.name = mn;
                     //Create all interpolators
-                    Interpolator<Color>      color_lerp = Interpolator.Get<Color>();
-                    Interpolator<Vector3>    pos_lerp   = Interpolator.Get<Vector3>();
-                    Interpolator<Quaternion> rot_lerp   = Interpolator.Get<Quaternion>();
+                    //Interpolator<Color>      color_lerp = Interpolator.Get<Color>();
+                    //Interpolator<Vector3>    pos_lerp   = Interpolator.Get<Vector3>();
+                    //Interpolator<Quaternion> rot_lerp   = Interpolator.Get<Quaternion>();
+                    PropertyInterpolator<Color>      color_lerp = new PropertyInterpolator<Color>     (mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);
+                    PropertyInterpolator<Vector3>    pos_lerp   = new PropertyInterpolator<Vector3>   (mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);
+                    PropertyInterpolator<Quaternion> rot_lerp   = new PropertyInterpolator<Quaternion>(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
                     //Set interpolation range and easing
-                    color_lerp.Set(mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);                    
-                    pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
-                    rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
+                    //color_lerp.Set(mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);                    
+                    //pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
+                    //rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
                     //Create all tweens setup with 'ids' for cancelling and clamp animation wrapping to stop after completion.
                     Tween<Color>      color_tween = new Tween<Color>     ("tween-b",  mr.sharedMaterial,"_Color",       Color.green,           Color.red,                        1f,AnimationWrapMode.Clamp,debugCurve);
                     Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform,     "position",     new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),           1f,AnimationWrapMode.Clamp,Tween.Elastic.OutBig);
@@ -797,6 +974,41 @@ namespace UnityExt.Project {
                 break;
                 #endregion
 
+                #region TweenAwait
+
+                //Example showing the await/async capabilities
+                case CaseTypeFlag.TweenAwait: {
+                    //Create simple cube
+                    GameObject cube_target = Instantiate(debugCube);
+                    cube_target.transform.parent = content;
+                    cube_target.name = "cube";                    
+                    //Duplicate its material
+                    MeshRenderer mr = cube_target.GetComponent<MeshRenderer>();
+                    //Clone the material for runtime changes
+                    string mn = mr.sharedMaterial.name;
+                    mr.sharedMaterial = Instantiate(mr.sharedMaterial);
+                    mr.sharedMaterial.name = mn;                    
+                    //Create the async callback
+                    System.Action run_animation =
+                    async 
+                    delegate() {                        
+                        Debug.Log("ExampleActivity> TweenAwait / Animation Start - Waiting 2s");
+                        await Timer.Delay(2f); 
+                        Debug.Log("ExampleActivity> TweenAwait / Scale Animation 1");
+                        await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,4f,0f,Tween.Elastic.OutBig);                        
+                        Debug.Log("ExampleActivity> TweenAwait / Scale Animation 2");
+                        await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,4f,0f,Tween.Elastic.OutSmall);                        
+                        Debug.Log("ExampleActivity> TweenAwait / Scale Animation 3");
+                        await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,4f,0f,Tween.Elastic.OutSmall);
+                        Debug.Log("ExampleActivity> TweenAwait / Animation Completed!");
+                    };
+                    run_animation();                    
+                    Debug.Log("ExampleActivity> TweenAwait / After Async Call");
+                }
+                break;
+
+                #endregion
+
                 #region Tween Run
                 //Example showing how to create tweens using the static methods of the class                
                 case CaseTypeFlag.TweenRun: {
@@ -877,13 +1089,189 @@ namespace UnityExt.Project {
                     
                     bs.Close();
                     //*/
-
+                    #if UNITY_EDITOR
                     UnityEditor.EditorUtility.RevealInFinder(fp);
+                    #endif
 
                 }
                 break;
                 #endregion
 
+                #region JsonFileSerialization
+
+                //Generates a random filled Dicitonary up to a huge quota
+                //Allows saving and loading a json and track profiler behavior
+                case CaseTypeFlag.JsonFileSerialization: {
+
+                    Dictionary<string,object> super_data = null;
+                    string json_fp = Application.persistentDataPath+"/json.json";
+                    
+                    Activity.Run(
+                    delegate(Activity a) { 
+
+                        ClearLog();
+                        Log("=== Json Serialization using Files ===");
+                        Log("=== Watch the Profiler for GC / Speed ===");
+                        Log("[1] Create Data");
+                        Log("[2] Save Files Sync");
+                        Log("[3] Load Files Sync");                        
+                        Log("[4] Save Files Async");
+                        Log("[5] Load Files Async");
+                        Log("[6] Open Folder");
+                        Log("======");
+                        ApplyLog();
+                        
+                        SerializerAttrib sf = SerializerAttrib.None | SerializerAttrib.CloseStream | SerializerAttrib.Safe;
+
+                        string cmd = "";
+                        if(Input.GetKeyDown(KeyCode.Alpha1)) cmd = "create-instance";
+                        if(Input.GetKeyDown(KeyCode.Alpha2)) cmd = "json-serialize-file";
+                        if(Input.GetKeyDown(KeyCode.Alpha3)) cmd = "json-deserialize-file";
+                        if(Input.GetKeyDown(KeyCode.Alpha4)) cmd = "json-serialize-file-async";   
+                        if(Input.GetKeyDown(KeyCode.Alpha5)) cmd = "json-deserialize-file-async"; 
+                        if(Input.GetKeyDown(KeyCode.Alpha6)) cmd = "open-folder"; 
+                        
+                        if(!string.IsNullOrEmpty(cmd)) Debug.Log($"ExampleApp> Json Serialization / Running {cmd}");
+
+                        switch(cmd) {
+                            default: break;
+                            #if UNITY_EDITOR
+                            case "open-folder": UnityEditor.EditorUtility.RevealInFinder(json_fp); break;
+                            #endif
+                            case "create-instance": {
+                                super_data = new Dictionary<string, object>();
+                                Dictionary<string,object> node = super_data;
+                                int n=0;
+                                int d=0;
+                                for(int i=0;i<12000;i++) {
+                                    string k = $"field_{i.ToString("000")}";
+                                    switch(i%10) {
+                                        case 0: case 1: case 2: node[k] = ((long)(Random.value * 0xffffff)).ToString("x"); break;
+                                        case 3: case 4: case 5: node[k] = i; break;
+                                        case 6: case 7: case 8: int[] l = new int[5]; for(int j=0;j<l.Length;j++)l[j] = n++; node[k] = l; break;
+                                        case 9: d++; node["child"] = new Dictionary<string, object>(); node = (Dictionary<string, object>)node["child"]; break;
+                                    }
+                                }                                
+                            }
+                            break;
+
+                            case "json-serialize-file-async":
+                            case "json-serialize-file": {
+                                if(super_data==null) break;
+                                bool is_async = cmd.Contains("async");
+                                JSONSerializer json_s = new JSONSerializer();
+                                System.Action run_jobs =
+                                async 
+                                delegate() { 
+                                    if(is_async) {
+                                        await json_s.SerializeAsync(super_data,          json_fp,                 sf); Debug.Log(">> 1");
+                                        await json_s.SerializeAsync(super_data,"pass123",json_fp+".pk",           sf); Debug.Log(">> 2");
+                                        await json_s.SerializeAsync(super_data,          json_fp+".b64",          sf | SerializerAttrib.Base64); Debug.Log(">> 3");
+                                        await json_s.SerializeAsync(super_data,          json_fp+".gzip",         sf | SerializerAttrib.GZip); Debug.Log(">> 4");                  
+                                        await json_s.SerializeAsync(super_data,          json_fp+".b64.gzip",     sf | SerializerAttrib.GZip | SerializerAttrib.Base64); Debug.Log(">> 5");
+                                        await json_s.SerializeAsync(super_data,"pass123",json_fp+".b64.gzip.pk",  sf | SerializerAttrib.GZip | SerializerAttrib.Base64); Debug.Log(">> 6");
+                                    }
+                                    else {
+                                        json_s.Serialize(super_data,          json_fp);
+                                        json_s.Serialize(super_data,"pass123",json_fp+".pk");
+                                        json_s.Serialize(super_data,          json_fp+".b64",          sf | SerializerAttrib.Base64);                                    
+                                        json_s.Serialize(super_data,          json_fp+".gzip",         sf | SerializerAttrib.GZip);                                    
+                                        json_s.Serialize(super_data,          json_fp+".b64.gzip",     sf | SerializerAttrib.GZip | SerializerAttrib.Base64);  
+                                        json_s.Serialize(super_data,"pass123",json_fp+".b64.gzip.pk",  sf | SerializerAttrib.GZip | SerializerAttrib.Base64);                                    
+                                    }                                     
+                                };
+                                run_jobs();
+                            }
+                            break;
+
+                            case "json-deserialize-file-async":
+                            case "json-deserialize-file": {           
+                                JSONSerializer json_s = new JSONSerializer();
+                                bool is_async = cmd.Contains("async");
+                                System.Action run_jobs =
+                                async 
+                                delegate() {                                                                                                            
+                                    Dictionary<string,object> d;
+                                    if(is_async) {
+                                        await json_s.DeserializeAsync<Dictionary<string,object>>(          json_fp);                                                                       Debug.Log(json_s.GetResult<Dictionary<string,object>>());
+                                        await json_s.DeserializeAsync<Dictionary<string,object>>("pass123",json_fp+".pk");                                                                 Debug.Log(json_s.GetResult<Dictionary<string,object>>());
+                                        await json_s.DeserializeAsync<Dictionary<string,object>>(          json_fp+".b64",          sf | SerializerAttrib.Base64);                         Debug.Log(json_s.GetResult<Dictionary<string,object>>());          
+                                        await json_s.DeserializeAsync<Dictionary<string,object>>(          json_fp+".gzip",         sf | SerializerAttrib.GZip);                           Debug.Log(json_s.GetResult<Dictionary<string,object>>());        
+                                        await json_s.DeserializeAsync<Dictionary<string,object>>(          json_fp+".b64.gzip",     sf | SerializerAttrib.GZip | SerializerAttrib.Base64); Debug.Log(json_s.GetResult<Dictionary<string,object>>());
+                                        await json_s.DeserializeAsync<Dictionary<string,object>>("pass123",json_fp+".b64.gzip.pk",  sf | SerializerAttrib.GZip | SerializerAttrib.Base64); Debug.Log(json_s.GetResult<Dictionary<string,object>>());
+                                    }
+                                    else {
+                                        d = json_s.Deserialize<Dictionary<string,object>>(          json_fp);
+                                        d = json_s.Deserialize<Dictionary<string,object>>("pass123",json_fp+".pk");
+                                        d = json_s.Deserialize<Dictionary<string,object>>(          json_fp+".b64",          sf | SerializerAttrib.Base64);                                    
+                                        d = json_s.Deserialize<Dictionary<string,object>>(          json_fp+".gzip",         sf | SerializerAttrib.GZip);                                    
+                                        d = json_s.Deserialize<Dictionary<string,object>>(          json_fp+".b64.gzip",     sf | SerializerAttrib.GZip | SerializerAttrib.Base64);  
+                                        d = json_s.Deserialize<Dictionary<string,object>>("pass123",json_fp+".b64.gzip.pk",  sf | SerializerAttrib.GZip | SerializerAttrib.Base64);                                    
+                                    }                                     
+                                };
+                                run_jobs();
+                            }
+                            break;
+                        }
+                        return true;
+                    });
+
+                }
+                break;
+
+                #endregion
+
+                #region Base64FileSerialization
+                //Simple serialization of string and bytes into Base64
+                case CaseTypeFlag.Base64FileSerialization: {
+
+                    Base64Serializer b64s = new Base64Serializer();
+                    object b64s_output;
+
+                    string str_d = "Some Text for Base64";
+                    byte[] bin_d = new byte[] { 65,66,67,68,69,70,71,72,73,74,75 };
+
+                    string str_fp = Application.persistentDataPath+"/txt64.b64";
+                    string bin_fp = Application.persistentDataPath+"/bin64.b64";
+
+                    StringBuilder sb = new StringBuilder();
+
+                    b64s.Serialize(str_d,          str_fp           , SerializerAttrib.CloseStream);
+                    b64s.Serialize(str_d,          str_fp+".gzip"   , SerializerAttrib.CloseStream | SerializerAttrib.GZip);
+                    b64s.Serialize(str_d,"pass123",str_fp+".pk"     , SerializerAttrib.CloseStream);
+                    b64s.Serialize(str_d,"pass123",str_fp+".gzip.pk", SerializerAttrib.CloseStream | SerializerAttrib.GZip);
+                    b64s.Serialize(str_d,          sb               , SerializerAttrib.CloseStream);
+
+                    Debug.Log($"Base64: {sb}");
+
+                    b64s_output = b64s.Deserialize<string>(          str_fp,            SerializerAttrib.CloseStream);                         Debug.Log(b64s_output);
+                    b64s_output = b64s.Deserialize<string>(          str_fp+".gzip",    SerializerAttrib.CloseStream | SerializerAttrib.GZip); Debug.Log(b64s_output);
+                    b64s_output = b64s.Deserialize<string>("pass123",str_fp+".pk",      SerializerAttrib.CloseStream);                         Debug.Log(b64s_output);
+                    b64s_output = b64s.Deserialize<string>("pass123",str_fp+".gzip.pk", SerializerAttrib.CloseStream | SerializerAttrib.GZip); Debug.Log(b64s_output);
+                    b64s_output = b64s.Deserialize<string>(sb,                          SerializerAttrib.CloseStream);                         Debug.Log(b64s_output);
+
+                    b64s.Serialize(bin_d,          bin_fp           , SerializerAttrib.CloseStream);
+                    b64s.Serialize(bin_d,          bin_fp+".gzip"   , SerializerAttrib.CloseStream | SerializerAttrib.GZip);
+                    b64s.Serialize(bin_d,"pass123",bin_fp+".pk"     , SerializerAttrib.CloseStream);
+                    b64s.Serialize(bin_d,"pass123",bin_fp+".gzip.pk", SerializerAttrib.CloseStream | SerializerAttrib.GZip);
+                    b64s.Serialize(bin_d,          sb               , SerializerAttrib.CloseStream);
+
+                    Debug.Log($"Base64: {sb}");
+
+                    b64s_output = b64s.Deserialize<byte[]>(          bin_fp,            SerializerAttrib.CloseStream);                         Debug.Log(string.Join(",",(byte[])b64s_output));
+                    b64s_output = b64s.Deserialize<byte[]>(          bin_fp+".gzip",    SerializerAttrib.CloseStream | SerializerAttrib.GZip); Debug.Log(string.Join(",",(byte[])b64s_output));
+                    b64s_output = b64s.Deserialize<byte[]>("pass123",bin_fp+".pk",      SerializerAttrib.CloseStream);                         Debug.Log(string.Join(",",(byte[])b64s_output));
+                    b64s_output = b64s.Deserialize<byte[]>("pass123",bin_fp+".gzip.pk", SerializerAttrib.CloseStream | SerializerAttrib.GZip); Debug.Log(string.Join(",",(byte[])b64s_output));
+                    b64s_output = b64s.Deserialize<byte[]>(sb,                          SerializerAttrib.CloseStream);                         Debug.Log(string.Join(",",(byte[])b64s_output));
+
+                    #if UNITY_EDITOR
+                    UnityEditor.EditorUtility.RevealInFinder(str_fp);
+                    #endif
+
+                }
+                break;
+
+                #endregion
 
             }
         }
@@ -895,7 +1283,7 @@ namespace UnityExt.Project {
             if(m_log_sb==null) m_log_sb = new StringBuilder();
             ClearLog();
             SetProgress(0f);
-            if(type!= CaseTypeFlag.None) Run(type);
+            Run(type);
         }
 
         #region Console

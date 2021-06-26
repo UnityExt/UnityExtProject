@@ -213,6 +213,7 @@ namespace UnityExt.Project {
             await System.Threading.Tasks.Task.Delay(800);
 
             Debug.Log($"DocumentationTools> Build / Complete!");
+            EditorUtility.RevealInFinder(docfxBuildTargetPath);
             m_build_progress = 1f;
             
         }
