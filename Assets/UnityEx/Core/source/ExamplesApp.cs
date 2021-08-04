@@ -1,25 +1,60 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
-using System.Threading.Tasks;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityExt.Core;
 using UnityExt.Core.IO;
-using UnityExt.Core.Net;
 using UnityExt.Core.Motion;
-using UnityExt.Sys;
-using UnityEngine.UI;
-using System.Text;
-using System.IO;
-
 using BitStream = UnityExt.Sys.BitStream;
 
 #pragma warning disable CS4014
 #pragma warning disable CS1998
 
 namespace UnityExt.Project {
+
+    [System.Serializable]
+    public struct Pos3 {
+        [SerializableField] public float x;
+        [SerializableField] public float y;
+        [SerializableField] public float z;
+    }
+
+    [System.Serializable]
+    public struct Coord3 {
+        [SerializableField] public Pos3 p0;
+        [SerializableField] public Pos3 p1;
+        [SerializableField] public Pos3 p2;
+    }
+
+    [System.Serializable]
+    public class Dataset {
+        [SerializableField] public bool     vbool    ;
+        [SerializableField] public char     vchar    ;
+        [SerializableField] public sbyte    vsbyte   ;
+        [SerializableField] public byte     vbyte    ;
+        [SerializableField] public short    vshort   ;
+        [SerializableField] public ushort   vushort  ;
+        [SerializableField] public int      vint     ;
+        [SerializableField] public uint     vuint    ;
+        [SerializableField] public long     vlong    ;
+        [SerializableField] public ulong    vulong   ;
+        [SerializableField] public float    vfloat   ;
+        [SerializableField] public double   vdouble  ;
+        [SerializableField] public decimal  vdecimal ;       
+        [SerializableField] public string   vstring  ;
+        [SerializableField] public System.DateTime vdate;
+        [SerializableField] public System.TimeSpan vtimespan;        
+        [SerializableField] public object[] ao;
+        [SerializableField] public Pos3 p0;
+        [SerializableField] public Coord3 c0;
+    }
+
 
     /// <summary>
     /// Perform a few examples of activity usage.
@@ -236,7 +271,7 @@ namespace UnityExt.Project {
         /// <summary>
         /// Enumeration to choose an example.
         /// </summary>
-        public enum CaseTypeFlag {
+        public enum CaseTypeFlag : ushort {
             None,
             Basic,
             BasicJob,
@@ -332,6 +367,225 @@ namespace UnityExt.Project {
 
                 case CaseTypeFlag.None: { 
 
+                    string cmd = "";
+
+                    object target_data=null;
+
+                    Activity.Run(
+                    delegate (Activity a) {
+
+                        if(Input.GetKeyDown(KeyCode.Alpha1)) cmd = "create-data";
+                        if(Input.GetKeyDown(KeyCode.Alpha2)) cmd = "object-stream-write";
+                        if(Input.GetKeyDown(KeyCode.Alpha3)) cmd = "object-stream-read";
+                        if(Input.GetKeyDown(KeyCode.Alpha4)) cmd = "binary-fmt-write";                        
+                        if(Input.GetKeyDown(KeyCode.Alpha5)) cmd = "binary-fmt-read";
+                        if(Input.GetKeyDown(KeyCode.Alpha6)) cmd = "json-write";                        
+                        if(Input.GetKeyDown(KeyCode.Alpha7)) cmd = "json-read";
+
+                        switch(cmd) {
+
+                            case "create-data": {
+                                Dataset[] test_list = new Dataset[5000];
+                                Dataset   test_single=null;
+
+                                System.Random rnd = new System.Random();
+
+                                int c = test_list.Length;
+                                //c=1;
+                                for(int i=0;i<c;i++) {                                    
+                                    Dataset it = new Dataset();
+                                    it.vsbyte    = (i&1)==0 ? (sbyte)1 : (sbyte)-1;
+                                    it.vbyte     = (byte)i;
+                                    it.vchar     = (char)i;
+                                    it.vbool     = (i&1)==0;
+                                    it.vshort    = (i&1)==0 ? (short)(short.MinValue+(i*2)) : (short)(short.MaxValue-(i*2));
+                                    it.vushort   = (ushort)(i*3);
+                                    it.vint      = (i&1)==0 ? (int)(int.MinValue+(i*10)) : (int)(int.MaxValue-(i*10));
+                                    it.vuint     = (uint)(i*13);
+                                    it.vlong     = (i&1)==0 ? (long)(long.MinValue+(i*33)) : (long)(long.MaxValue-(i*33));
+                                    it.vulong    = (ulong)(i*33);
+                                    it.vfloat    = (float)rnd.NextDouble();
+                                    it.vdouble   = rnd.NextDouble();
+                                    it.vdecimal  = decimal.MaxValue-i;
+                                    it.vdate     = System.DateTime.Now;
+                                    it.vtimespan = new System.TimeSpan((long)(rnd.NextDouble()*1000.0));
+                                    it.vstring   = "0x"+(i*16).ToString("x");
+                                    it.p0 = new Pos3()   { x=(i*3),y=(i*3)+1,z=(i*3)+2 };
+                                    it.c0 = new Coord3() { 
+                                        p0=new Pos3()   { x=(i*9)+0,y=(i*9)+1,z=(i*9)+2 },
+                                        p1=new Pos3()   { x=(i*9)+3,y=(i*9)+4,z=(i*9)+5 },
+                                        p2=new Pos3()   { x=(i*9)+6,y=(i*9)+7,z=(i*9)+8 }
+                                    };
+                                    test_single = test_list[i] = it;
+                                }
+
+                                /*
+                                Write - 5000 Dataset
+                                Operation     | Speed | GC Alloc | File Size
+                                Create:       |  16ms |  1.2mb   | ---
+                                Objwriter.TXT | 856ms |  4.0mb   | 2.75mb
+                                Objwriter.BIN | 653ms |  3.9mb   | 1.95mb
+                                BinFormatter  | 466ms | 14.8mb   | 1.06mb
+                                Json:         | 750ms | 20.6mb   | 2.65mb
+
+                                Read - 5000 Dataset
+                                Operation     | Speed  | GC Alloc                                  
+                                Objwriter.TXT |  811ms |  4.5mb   
+                                Objwriter.BIN |  641ms |  4.3mb   
+                                BinFormatter  |  510ms | 19.4mb   
+                                Json:         | 1035ms | 13.2mb
+                                //*/
+
+                                target_data = c==1 ? (object)test_single : (object)test_list;
+
+                            }
+                            break;
+
+                            case "json-read":
+                            case "json-write": {
+                                
+                                string fp_json = Application.persistentDataPath+"/data.json";                                
+                                string fp = fp_json;
+                                FileStream fs;
+                                
+                                if(cmd == "json-write") {
+                                    fs = File.Open(fp, FileMode.Create);
+                                    JSONSerializer jw = new JSONSerializer();
+                                    jw.Serialize(target_data,fs);                                                                        
+                                    fs.Flush();
+                                    Debug.Log("JsonSerializer: "+fs.Length+" bytes");
+                                    fs.Close();
+                                    #if UNITY_EDITOR
+                                    UnityEditor.EditorUtility.RevealInFinder(fp);
+                                    #endif
+                                } 
+
+                                if(cmd == "json-read") {
+                                    fs = File.Open(fp, FileMode.Open);                                
+                                    JSONSerializer jr = new JSONSerializer();
+                                    target_data = jr.Deserialize<Dataset[]>(fs);                                                                        
+                                    fs.Close();
+                                    #if UNITY_EDITOR
+                                    UnityEditor.EditorUtility.RevealInFinder(fp);
+                                    #endif
+                                } 
+                            }
+                            break;
+
+                            case "object-stream-read":
+                            case "object-stream-write": {
+                                
+                                string fp_txt = Application.persistentDataPath+"/data.op.txt";
+                                string fp_bin = Application.persistentDataPath+"/data.op.bin";
+                                string fp = fp_txt;
+                                FileStream fs;
+
+                                if(cmd == "object-stream-write") {
+
+                                    //Timer.Run(0.2f,
+                                    //delegate(Timer tt)
+                                    { 
+                                        fs = File.Open(fp_txt, FileMode.Create);                                        
+                                        ObjectWriter ow = new ObjectWriter(fs,true);
+                                        ow.Write(target_data);
+                                        fs.Flush();
+                                        Debug.Log("ObjectWriter: TXT "+fs.Length+" bytes");
+                                        fs.Close();
+                                    }
+                                    //);                                    
+
+                                    Timer.Run(0.2f,
+                                    delegate(Timer tt) { 
+                                        fs = File.Open(fp_bin, FileMode.Create);                                        
+                                        ObjectWriter ow = new ObjectWriter(fs,false);
+                                        ow.Write(target_data);
+                                        fs.Flush();
+                                        Debug.Log("ObjectWriter: BIN "+fs.Length+" bytes");
+                                        fs.Close();
+                                    });                                    
+                                                                        
+                                    #if UNITY_EDITOR
+                                    UnityEditor.EditorUtility.RevealInFinder(fp_txt);
+                                    #endif
+
+                                } 
+
+                                if(cmd == "object-stream-read") {
+
+                                    //Timer.Run(0.5f,
+                                    //delegate(Timer tt)
+                                    { 
+                                        fs = new FileStream(fp_txt, FileMode.Open);
+                                        ObjectReader ow = new ObjectReader(fs,true);
+                                        target_data = ow.Read();                                        
+                                        fs.Close();
+                                    }
+                                    //);   
+                                    //*/
+
+                                    Timer.Run(0.2f,
+                                    delegate(Timer tt) { 
+                                        fs = new FileStream(fp_bin, FileMode.Open);
+                                        ObjectReader ow = new ObjectReader(fs,false);
+                                        target_data = ow.Read();                                        
+                                        fs.Close();
+                                    });      
+                                    //*/
+                                    
+                                    #if UNITY_EDITOR
+                                    UnityEditor.EditorUtility.RevealInFinder(fp_txt);
+                                    #endif
+                                } 
+
+                            }
+                            break;
+
+                            case "binary-fmt-read":
+                            case "binary-fmt-write": {           
+                                string fp_bin = Application.persistentDataPath+"/data.fmt.bin";
+                                string fp = fp_bin;
+                                FileStream fs;
+                                BinaryFormatter bfmt = new BinaryFormatter();
+
+                                if(cmd == "binary-fmt-write") {
+                                    fs = File.Open(fp,FileMode.Create);
+                                    bfmt.Serialize(fs,target_data);
+                                    fs.Flush();
+                                    Debug.Log("BinaryFormatter: " + fs.Length + " bytes");
+                                    fs.Close();
+                                    #if UNITY_EDITOR
+                                    UnityEditor.EditorUtility.RevealInFinder(fp);
+                                    #endif
+                                }
+
+                                if(cmd == "binary-fmt-read") {
+                                    fs = File.Open(fp,FileMode.Open);
+                                    target_data = bfmt.Deserialize(fs);
+                                    fs.Close();
+                                    #if UNITY_EDITOR
+                                    UnityEditor.EditorUtility.RevealInFinder(fp);
+                                    #endif
+                                }
+                                
+                            }
+                            break;
+
+                        }
+
+                        cmd="";
+
+                        return true;
+                    });
+
+                    /*
+                    string fp = Application.persistentDataPath+"/bin.txt";
+                    File.WriteAllText(fp,ss.tree.result.ToString());
+                    #if UNITY_EDITOR
+                    UnityEditor.EditorUtility.RevealInFinder(fp);
+                    #endif
+                    //*/
+
+                    /*
                     //https://api-dev.drlgame.com/maps/updated/?token=eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9
 
                     WebRequest.InitDataFileSystem();
@@ -357,21 +611,21 @@ namespace UnityExt.Project {
                             req.query.Add("","list-noidx","3");
                         }
                         else {
-                            /*
-                            StreamWriter raw_body = new StreamWriter(new MemoryStream());
-                            BinaryWriter raw_bin  = new BinaryWriter(raw_body.BaseStream);
-                            raw_body.WriteLine("This body has no multipart data"); raw_body.Flush();
-                            raw_body.WriteLine("Just free data around"); raw_body.Flush();
-                            raw_body.WriteLine(true); raw_body.Flush();
-                            raw_body.WriteLine("--"); raw_body.Flush();
-                            raw_bin.Write(10.123f); raw_bin.Flush();
-                            raw_body.WriteLine("\n--"); raw_body.Flush();
-                            raw_bin.Write(new byte[] { 65,66,67,68,69 }); raw_bin.Flush();
-                            raw_body.WriteLine("\n--");                             
-                            raw_body.Flush();
-                            raw_body.BaseStream.Position=0;
-                            req.request.body.stream = raw_body.BaseStream;
-                            //*/
+                            
+                            //StreamWriter raw_body = new StreamWriter(new MemoryStream());
+                            //BinaryWriter raw_bin  = new BinaryWriter(raw_body.BaseStream);
+                            //raw_body.WriteLine("This body has no multipart data"); raw_body.Flush();
+                            //raw_body.WriteLine("Just free data around"); raw_body.Flush();
+                            //raw_body.WriteLine(true); raw_body.Flush();
+                            //raw_body.WriteLine("--"); raw_body.Flush();
+                            //raw_bin.Write(10.123f); raw_bin.Flush();
+                            //raw_body.WriteLine("\n--"); raw_body.Flush();
+                            //raw_bin.Write(new byte[] { 65,66,67,68,69 }); raw_bin.Flush();
+                            //raw_body.WriteLine("\n--");                             
+                            //raw_body.Flush();
+                            //raw_body.BaseStream.Position=0;
+                            //req.request.body.stream = raw_body.BaseStream;
+                            
 
                             req.request.body.AddField("str","some-text");
                             req.request.body.AddBase64("json-b64","{ a: 1, b: 2}");
@@ -386,7 +640,7 @@ namespace UnityExt.Project {
                             req.request.body.AddJson("json-arr", new object[] { "a",1 ,"b","txt","c",2.345f });
                             req.request.body.AddPNG("img-png", debugImage);
                             req.request.body.AddJPEG("img-jpg",debugImage);
-                            //*/
+                            
                         }
                         
 
@@ -469,7 +723,7 @@ namespace UnityExt.Project {
                         }
                         return true;
                     });
-
+                    //*/
                 } break;
 
                 #region Basic
