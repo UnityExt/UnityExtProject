@@ -485,23 +485,23 @@ namespace UnityExt.Project {
                                     //Timer.Run(0.2f,
                                     //delegate(Timer tt)
                                     { 
-                                        fs = File.Open(fp_txt, FileMode.Create);                                        
-                                        ObjectWriter ow = new ObjectWriter(fs,true);
-                                        ow.Write(target_data);
-                                        fs.Flush();
-                                        Debug.Log("ObjectWriter: TXT "+fs.Length+" bytes");
-                                        fs.Close();
+                                        fs = File.Open(fp_txt, FileMode.Create);
+                                        ObjectSerializer objs = new ObjectSerializer();
+                                        objs.Serialize(target_data,fs,  SerializerAttrib.GZip | SerializerAttrib.TextMode);                                        
+                                        FileInfo fi = new FileInfo(fp_txt);
+                                        Debug.Log("ObjectWriter: TXT "+fi.Length+" bytes");
+                                        
                                     }
                                     //);                                    
 
                                     Timer.Run(0.2f,
                                     delegate(Timer tt) { 
                                         fs = File.Open(fp_bin, FileMode.Create);                                        
-                                        ObjectWriter ow = new ObjectWriter(fs,false);
-                                        ow.Write(target_data);
-                                        fs.Flush();
-                                        Debug.Log("ObjectWriter: BIN "+fs.Length+" bytes");
-                                        fs.Close();
+                                        ObjectSerializer objs = new ObjectSerializer();
+                                        objs.Serialize(target_data,fs,  SerializerAttrib.GZip | SerializerAttrib.BinaryMode);
+                                        FileInfo fi = new FileInfo(fp_txt);
+                                        Debug.Log("ObjectWriter: BIN "+fi.Length+" bytes");
+                                        
                                     });                                    
                                                                         
                                     #if UNITY_EDITOR
