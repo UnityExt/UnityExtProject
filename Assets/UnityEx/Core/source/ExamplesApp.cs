@@ -487,7 +487,7 @@ namespace UnityExt.Project {
                                     { 
                                         fs = File.Open(fp_txt, FileMode.Create);
                                         ObjectSerializer objs = new ObjectSerializer();
-                                        objs.Serialize(target_data,fs,  SerializerAttrib.GZip | SerializerAttrib.TextMode);                                        
+                                        objs.Serialize(target_data,fs,SerializerAttrib.TextMode | SerializerAttrib.CloseStream);                                        
                                         FileInfo fi = new FileInfo(fp_txt);
                                         Debug.Log("ObjectWriter: TXT "+fi.Length+" bytes");
                                         
@@ -498,7 +498,7 @@ namespace UnityExt.Project {
                                     delegate(Timer tt) { 
                                         fs = File.Open(fp_bin, FileMode.Create);                                        
                                         ObjectSerializer objs = new ObjectSerializer();
-                                        objs.Serialize(target_data,fs,  SerializerAttrib.GZip | SerializerAttrib.BinaryMode);
+                                        objs.Serialize(target_data,fs,SerializerAttrib.BinaryMode | SerializerAttrib.CloseStream);
                                         FileInfo fi = new FileInfo(fp_txt);
                                         Debug.Log("ObjectWriter: BIN "+fi.Length+" bytes");
                                         
