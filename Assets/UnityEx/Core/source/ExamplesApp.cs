@@ -385,7 +385,7 @@ namespace UnityExt.Project {
                         switch(cmd) {
 
                             case "create-data": {
-                                Dataset[] test_list = new Dataset[5000];
+                                Dataset[] test_list = new Dataset[1];
                                 Dataset   test_single=null;
 
                                 System.Random rnd = new System.Random();
@@ -491,6 +491,19 @@ namespace UnityExt.Project {
                                         FileInfo fi = new FileInfo(fp_txt);
                                         Debug.Log("ObjectWriter: TXT "+fi.Length+" bytes");
                                         
+                                        Serializer.Serialize(fp_txt,fp_txt+".gz"  ,SerializerAttrib.GZip);
+                                        Serializer.Serialize(fp_txt,fp_txt+".dfl" ,SerializerAttrib.Deflate);
+                                        Serializer.Serialize(fp_txt,fp_txt+".pk"  ,"some-pass");
+                                        Serializer.Serialize(fp_txt,fp_txt+".b64" ,SerializerAttrib.Base64);
+                                        Serializer.Serialize(fp_txt,fp_txt+".gz64",SerializerAttrib.Base64 | SerializerAttrib.GZip);
+
+
+                                        Serializer.Deserialize(fp_txt+".gz"  ,fp_txt+".gz.txt"  ,SerializerAttrib.GZip);
+                                        Serializer.Deserialize(fp_txt+".dfl" ,fp_txt+".dfl.txt" ,SerializerAttrib.Deflate);
+                                        Serializer.Deserialize(fp_txt+".pk"  ,fp_txt+".pk.txt"  ,"some-pass");
+                                        Serializer.Deserialize(fp_txt+".b64" ,fp_txt+".b64.txt" ,SerializerAttrib.Base64);
+                                        Serializer.Deserialize(fp_txt+".gz64",fp_txt+".gz64.txt",SerializerAttrib.Base64 | SerializerAttrib.GZip);
+
                                     }
                                     //);                                    
 
