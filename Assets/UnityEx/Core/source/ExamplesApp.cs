@@ -11,7 +11,8 @@ using UnityEngine.UI;
 using UnityExt.Core;
 using UnityExt.Core.IO;
 using UnityExt.Core.Motion;
-using BitStream = UnityExt.Sys.BitStream;
+using UnityExt.Core.Components;
+using BitStream = UnityExt.Core.IO.BitStream;
 
 #pragma warning disable CS4014
 #pragma warning disable CS1998
@@ -20,16 +21,16 @@ namespace UnityExt.Project {
 
     [System.Serializable]
     public struct Pos3 {
-        [SerializableField] public float x;
-        [SerializableField] public float y;
-        [SerializableField] public float z;
+        public float X;
+        public float Y;
+        public float Z;
     }
 
     [System.Serializable]
     public struct Coord3 {
-        [SerializableField] public Pos3 p0;
-        [SerializableField] public Pos3 p1;
-        [SerializableField] public Pos3 p2;
+        [SerializableField] public Pos3 P0;
+        [SerializableField] public Pos3 P1;
+        [SerializableField] public Pos3 P2;
     }
 
     [System.Serializable]
@@ -52,7 +53,10 @@ namespace UnityExt.Project {
         [SerializableField] public System.TimeSpan vtimespan;        
         [SerializableField] public object[] ao;
         [SerializableField] public Pos3 p0;
-        [SerializableField] public Coord3 c0;
+        [SerializableField] public Coord3  c0;        
+        [SerializableField] public object[] l0 = new object[] { 0,1,2,3,null,null,6 };
+        [SerializableField] public object[] l1 = new object[] { null,null,null };
+        [SerializableField] public object[] l2 = null;
     }
 
 
@@ -356,6 +360,11 @@ namespace UnityExt.Project {
         public AudioSource debugAudio;
 
         /// <summary>
+        /// Helper to play with gradients.
+        /// </summary>
+        public Gradient debugGradient;
+
+        /// <summary>
         /// Internals.
         /// </summary>
         private StringBuilder m_log_sb;
@@ -369,8 +378,10 @@ namespace UnityExt.Project {
 
                     string cmd = "";
 
+                    ObjectParser.DefaultSettings = ParseSettings.UnitySettings;
+                    
                     object target_data=null;
-
+                    
                     Activity.Run(
                     delegate (Activity a) {
 
@@ -385,7 +396,7 @@ namespace UnityExt.Project {
                         switch(cmd) {
 
                             case "create-data": {
-                                Dataset[] test_list = new Dataset[1];
+                                Dataset[] test_list = new Dataset[5000];
                                 Dataset   test_single=null;
 
                                 System.Random rnd = new System.Random();
@@ -410,11 +421,11 @@ namespace UnityExt.Project {
                                     it.vdate     = System.DateTime.Now;
                                     it.vtimespan = new System.TimeSpan((long)(rnd.NextDouble()*1000.0));
                                     it.vstring   = "0x"+(i*16).ToString("x");
-                                    it.p0 = new Pos3()   { x=(i*3),y=(i*3)+1,z=(i*3)+2 };
+                                    it.p0 = new Pos3()   { X=(i*3),Y=(i*3)+1,Z=(i*3)+2 };
                                     it.c0 = new Coord3() { 
-                                        p0=new Pos3()   { x=(i*9)+0,y=(i*9)+1,z=(i*9)+2 },
-                                        p1=new Pos3()   { x=(i*9)+3,y=(i*9)+4,z=(i*9)+5 },
-                                        p2=new Pos3()   { x=(i*9)+6,y=(i*9)+7,z=(i*9)+8 }
+                                        P0=new Pos3()   { X=(i*9)+0,Y=(i*9)+1,Z=(i*9)+2 },
+                                        P1=new Pos3()   { X=(i*9)+3,Y=(i*9)+4,Z=(i*9)+5 },
+                                        P2=new Pos3()   { X=(i*9)+6,Y=(i*9)+7,Z=(i*9)+8 }
                                     };
                                     test_single = test_list[i] = it;
                                 }
@@ -422,18 +433,18 @@ namespace UnityExt.Project {
                                 /*
                                 Write - 5000 Dataset
                                 Operation     | Speed | GC Alloc | File Size
-                                Create:       |  16ms |  1.2mb   | ---
-                                Objwriter.TXT | 856ms |  4.0mb   | 2.75mb
-                                Objwriter.BIN | 653ms |  3.9mb   | 1.95mb
-                                BinFormatter  | 466ms | 14.8mb   | 1.06mb
-                                Json:         | 750ms | 20.6mb   | 2.65mb
+                                Create:       |  19ms |  1.2mb   | ---
+                                Objwriter.TXT | 971ms |  5.0mb   | 2.95mb
+                                Objwriter.BIN | 764ms |  4.9mb   | 2.21mb
+                                BinFormatter  | 531ms | 18.4mb   | 1.37mb
+                                Json:         | 702ms | 21.0mb   | 2.95mb
 
                                 Read - 5000 Dataset
                                 Operation     | Speed  | GC Alloc                                  
-                                Objwriter.TXT |  811ms |  4.5mb   
-                                Objwriter.BIN |  641ms |  4.3mb   
-                                BinFormatter  |  510ms | 19.4mb   
-                                Json:         | 1035ms | 13.2mb
+                                Objwriter.TXT |  839ms |  7.2mb   
+                                Objwriter.BIN |  730ms |  7.0mb   
+                                BinFormatter  |  576ms | 25.9mb   
+                                Json:         | 1087ms | 16.8mb
                                 //*/
 
                                 target_data = c==1 ? (object)test_single : (object)test_list;
@@ -475,8 +486,9 @@ namespace UnityExt.Project {
                             case "object-stream-read":
                             case "object-stream-write": {
                                 
-                                string fp_txt = Application.persistentDataPath+"/data.op.txt";
-                                string fp_bin = Application.persistentDataPath+"/data.op.bin";
+                                string pdp    = Application.persistentDataPath;
+                                string fp_txt = pdp+"/data.op.txt";
+                                string fp_bin = pdp+"/data.op.bin";
                                 string fp = fp_txt;
                                 FileStream fs;
 
@@ -485,12 +497,14 @@ namespace UnityExt.Project {
                                     //Timer.Run(0.2f,
                                     //delegate(Timer tt)
                                     { 
+                                        
                                         fs = File.Open(fp_txt, FileMode.Create);
                                         ObjectSerializer objs = new ObjectSerializer();
                                         objs.Serialize(target_data,fs,SerializerAttrib.TextMode | SerializerAttrib.CloseStream);                                        
                                         FileInfo fi = new FileInfo(fp_txt);
                                         Debug.Log("ObjectWriter: TXT "+fi.Length+" bytes");
                                         
+                                        /*
                                         Serializer.Serialize(fp_txt,fp_txt+".gz"  ,SerializerAttrib.GZip);
                                         Serializer.Serialize(fp_txt,fp_txt+".dfl" ,SerializerAttrib.Deflate);
                                         Serializer.Serialize(fp_txt,fp_txt+".pk"  ,"some-pass");
@@ -503,7 +517,7 @@ namespace UnityExt.Project {
                                         Serializer.Deserialize(fp_txt+".pk"  ,fp_txt+".pk.txt"  ,"some-pass");
                                         Serializer.Deserialize(fp_txt+".b64" ,fp_txt+".b64.txt" ,SerializerAttrib.Base64);
                                         Serializer.Deserialize(fp_txt+".gz64",fp_txt+".gz64.txt",SerializerAttrib.Base64 | SerializerAttrib.GZip);
-
+                                        //*/
                                     }
                                     //);                                    
 
@@ -512,9 +526,8 @@ namespace UnityExt.Project {
                                         fs = File.Open(fp_bin, FileMode.Create);                                        
                                         ObjectSerializer objs = new ObjectSerializer();
                                         objs.Serialize(target_data,fs,SerializerAttrib.BinaryMode | SerializerAttrib.CloseStream);
-                                        FileInfo fi = new FileInfo(fp_txt);
+                                        FileInfo fi = new FileInfo(fp_bin);
                                         Debug.Log("ObjectWriter: BIN "+fi.Length+" bytes");
-                                        
                                     });                                    
                                                                         
                                     #if UNITY_EDITOR
