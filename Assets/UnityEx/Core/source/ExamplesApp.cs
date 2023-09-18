@@ -14,6 +14,9 @@ using UnityExt.Core.Animation;
 using UnityExt.Core.Components;
 using BitStream = UnityExt.Core.IO.BitStream;
 using System.Security.Cryptography;
+using UnityExt.Core.Net;
+using Stopwatch = System.Diagnostics.Stopwatch;
+using UnityEngine.Profiling;
 
 #pragma warning disable CS4014
 #pragma warning disable CS1998
@@ -377,256 +380,25 @@ namespace UnityExt.Project {
 
                 case CaseTypeFlag.None: { 
 
-                    string cmd = "";
-
-                    ObjectParser.DefaultSettings = ParseSettings.UnitySettings;
                     
-                    object target_data=null;
-
-                    Activity.Run(
-                    delegate (Activity a) {
-
-                        if(Input.GetKeyDown(KeyCode.Alpha1)) cmd = "create-data";
-                        if(Input.GetKeyDown(KeyCode.Alpha2)) cmd = "object-stream-write";
-                        if(Input.GetKeyDown(KeyCode.Alpha3)) cmd = "object-stream-read";
-                        if(Input.GetKeyDown(KeyCode.Alpha4)) cmd = "binary-fmt-write";                        
-                        if(Input.GetKeyDown(KeyCode.Alpha5)) cmd = "binary-fmt-read";
-                        if(Input.GetKeyDown(KeyCode.Alpha6)) cmd = "json-write";                        
-                        if(Input.GetKeyDown(KeyCode.Alpha7)) cmd = "json-read";
-
-                        switch(cmd) {
-
-                            case "create-data": {
-                                Dataset[] test_list = new Dataset[5000];
-                                Dataset   test_single=null;
-
-                                System.Random rnd = new System.Random();
-
-                                int c = test_list.Length;
-                                //c=1;
-                                for(int i=0;i<c;i++) {                                    
-                                    Dataset it = new Dataset();
-                                    it.vsbyte    = (i&1)==0 ? (sbyte)1 : (sbyte)-1;
-                                    it.vbyte     = (byte)i;
-                                    it.vchar     = (char)i;
-                                    it.vbool     = (i&1)==0;
-                                    it.vshort    = (i&1)==0 ? (short)(short.MinValue+(i*2)) : (short)(short.MaxValue-(i*2));
-                                    it.vushort   = (ushort)(i*3);
-                                    it.vint      = (i&1)==0 ? (int)(int.MinValue+(i*10)) : (int)(int.MaxValue-(i*10));
-                                    it.vuint     = (uint)(i*13);
-                                    it.vlong     = (i&1)==0 ? (long)(long.MinValue+(i*33)) : (long)(long.MaxValue-(i*33));
-                                    it.vulong    = (ulong)(i*33);
-                                    it.vfloat    = (float)rnd.NextDouble();
-                                    it.vdouble   = rnd.NextDouble();
-                                    it.vdecimal  = decimal.MaxValue-i;
-                                    it.vdate     = System.DateTime.Now;
-                                    it.vtimespan = new System.TimeSpan((long)(rnd.NextDouble()*1000.0));
-                                    it.vstring   = "0x"+(i*16).ToString("x");
-                                    it.p0 = new Pos3()   { X=(i*3),Y=(i*3)+1,Z=(i*3)+2 };
-                                    it.c0 = new Coord3() { 
-                                        P0=new Pos3()   { X=(i*9)+0,Y=(i*9)+1,Z=(i*9)+2 },
-                                        P1=new Pos3()   { X=(i*9)+3,Y=(i*9)+4,Z=(i*9)+5 },
-                                        P2=new Pos3()   { X=(i*9)+6,Y=(i*9)+7,Z=(i*9)+8 }
-                                    };
-                                    test_single = test_list[i] = it;
-                                }
-
-                                /*
-                                Write - 5000 Dataset
-                                Operation     | Speed | GC Alloc | File Size
-                                Create:       |  19ms |  1.2mb   | ---
-                                Objwriter.TXT | 971ms |  5.0mb   | 2.95mb
-                                Objwriter.BIN | 764ms |  4.9mb   | 2.21mb
-                                BinFormatter  | 531ms | 18.4mb   | 1.37mb
-                                Json:         | 702ms | 21.0mb   | 2.95mb
-
-                                Read - 5000 Dataset
-                                Operation     | Speed  | GC Alloc                                  
-                                Objwriter.TXT |  839ms |  7.2mb   
-                                Objwriter.BIN |  730ms |  7.0mb   
-                                BinFormatter  |  576ms | 25.9mb   
-                                Json:         | 1087ms | 16.8mb
-                                //*/
-
-                                target_data = c==1 ? (object)test_single : (object)test_list;
-
-                            }
-                            break;
-
-                            case "json-read":
-                            case "json-write": {
-                                
-                                string fp_json = Application.persistentDataPath+"/data.json";                                
-                                string fp = fp_json;
-                                FileStream fs;
-                                
-                                if(cmd == "json-write") {
-                                    fs = File.Open(fp, FileMode.Create);
-                                    JSONSerializer jw = new JSONSerializer();
-                                    jw.Serialize(target_data,fs);                                                                        
-                                    fs.Flush();
-                                    Debug.Log("JsonSerializer: "+fs.Length+" bytes");
-                                    fs.Close();
-                                    #if UNITY_EDITOR
-                                    UnityEditor.EditorUtility.RevealInFinder(fp);
-                                    #endif
-                                } 
-
-                                if(cmd == "json-read") {
-                                    fs = File.Open(fp, FileMode.Open);                                
-                                    JSONSerializer jr = new JSONSerializer();
-                                    target_data = jr.Deserialize<Dataset[]>(fs);                                                                        
-                                    fs.Close();
-                                    #if UNITY_EDITOR
-                                    UnityEditor.EditorUtility.RevealInFinder(fp);
-                                    #endif
-                                } 
-                            }
-                            break;
-
-                            case "object-stream-read":
-                            case "object-stream-write": {
-                                
-                                string pdp    = Application.persistentDataPath;
-                                string fp_txt = pdp+"/data.op.txt";
-                                string fp_bin = pdp+"/data.op.bin";
-                                string fp = fp_txt;
-                                FileStream fs;
-
-                                if(cmd == "object-stream-write") {
-
-                                    //Timer.Run(0.2f,
-                                    //delegate(Timer tt)
-                                    { 
-                                        
-                                        fs = File.Open(fp_txt, FileMode.Create);
-                                        ObjectSerializer objs = new ObjectSerializer();
-                                        objs.Serialize(target_data,fs,SerializerAttrib.TextMode | SerializerAttrib.CloseStream);                                        
-                                        FileInfo fi = new FileInfo(fp_txt);
-                                        Debug.Log("ObjectWriter: TXT "+fi.Length+" bytes");
-                                        
-                                        /*
-                                        Serializer.Serialize(fp_txt,fp_txt+".gz"  ,SerializerAttrib.GZip);
-                                        Serializer.Serialize(fp_txt,fp_txt+".dfl" ,SerializerAttrib.Deflate);
-                                        Serializer.Serialize(fp_txt,fp_txt+".pk"  ,"some-pass");
-                                        Serializer.Serialize(fp_txt,fp_txt+".b64" ,SerializerAttrib.Base64);
-                                        Serializer.Serialize(fp_txt,fp_txt+".gz64",SerializerAttrib.Base64 | SerializerAttrib.GZip);
-
-
-                                        Serializer.Deserialize(fp_txt+".gz"  ,fp_txt+".gz.txt"  ,SerializerAttrib.GZip);
-                                        Serializer.Deserialize(fp_txt+".dfl" ,fp_txt+".dfl.txt" ,SerializerAttrib.Deflate);
-                                        Serializer.Deserialize(fp_txt+".pk"  ,fp_txt+".pk.txt"  ,"some-pass");
-                                        Serializer.Deserialize(fp_txt+".b64" ,fp_txt+".b64.txt" ,SerializerAttrib.Base64);
-                                        Serializer.Deserialize(fp_txt+".gz64",fp_txt+".gz64.txt",SerializerAttrib.Base64 | SerializerAttrib.GZip);
-                                        //*/
-                                    }
-                                    //);                                    
-
-                                    Timer.Run(0.2f,
-                                    delegate(Timer tt) { 
-                                        fs = File.Open(fp_bin, FileMode.Create);                                        
-                                        ObjectSerializer objs = new ObjectSerializer();
-                                        objs.Serialize(target_data,fs,SerializerAttrib.BinaryMode | SerializerAttrib.CloseStream);
-                                        FileInfo fi = new FileInfo(fp_bin);
-                                        Debug.Log("ObjectWriter: BIN "+fi.Length+" bytes");
-                                    });                                    
-                                                                        
-                                    #if UNITY_EDITOR
-                                    UnityEditor.EditorUtility.RevealInFinder(fp_txt);
-                                    #endif
-
-                                } 
-
-                                if(cmd == "object-stream-read") {
-
-                                    //Timer.Run(0.5f,
-                                    //delegate(Timer tt)
-                                    { 
-                                        fs = new FileStream(fp_txt, FileMode.Open);
-                                        ObjectReader ow = new ObjectReader(fs,true);
-                                        target_data = ow.Read();                                        
-                                        fs.Close();
-                                    }
-                                    //);   
-                                    //*/
-
-                                    Timer.Run(0.2f,
-                                    delegate(Timer tt) { 
-                                        fs = new FileStream(fp_bin, FileMode.Open);
-                                        ObjectReader ow = new ObjectReader(fs,false);
-                                        target_data = ow.Read();                                        
-                                        fs.Close();
-                                    });      
-                                    //*/
-                                    
-                                    #if UNITY_EDITOR
-                                    UnityEditor.EditorUtility.RevealInFinder(fp_txt);
-                                    #endif
-                                } 
-
-                            }
-                            break;
-
-                            case "binary-fmt-read":
-                            case "binary-fmt-write": {           
-                                string fp_bin = Application.persistentDataPath+"/data.fmt.bin";
-                                string fp = fp_bin;
-                                FileStream fs;
-                                BinaryFormatter bfmt = new BinaryFormatter();
-
-                                if(cmd == "binary-fmt-write") {
-                                    fs = File.Open(fp,FileMode.Create);
-                                    bfmt.Serialize(fs,target_data);
-                                    fs.Flush();
-                                    Debug.Log("BinaryFormatter: " + fs.Length + " bytes");
-                                    fs.Close();
-                                    #if UNITY_EDITOR
-                                    UnityEditor.EditorUtility.RevealInFinder(fp);
-                                    #endif
-                                }
-
-                                if(cmd == "binary-fmt-read") {
-                                    fs = File.Open(fp,FileMode.Open);
-                                    target_data = bfmt.Deserialize(fs);
-                                    fs.Close();
-                                    #if UNITY_EDITOR
-                                    UnityEditor.EditorUtility.RevealInFinder(fp);
-                                    #endif
-                                }
-                                
-                            }
-                            break;
-
-                        }
-
-                        cmd="";
-
-                        return true;
-                    });
-
-                    /*
-                    string fp = Application.persistentDataPath+"/bin.txt";
-                    File.WriteAllText(fp,ss.tree.result.ToString());
-                    #if UNITY_EDITOR
-                    UnityEditor.EditorUtility.RevealInFinder(fp);
-                    #endif
-                    //*/
-
-                    /*
                     //https://api-dev.drlgame.com/maps/updated/?token=eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9
 
                     WebRequest.InitDataFileSystem();
                     WebRequestCache.Clear();
-                        
+                    
+                    
                     WebRequest req = null;
 
                     System.Action<bool> run_req =
                     async
                     delegate(bool p_file) {
 
-                        req = new WebRequest();                        
+                        req = new WebRequest(); 
+                        req.query.Clear();
+                        req.query.Add("token","eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9");
+                        /*
                         if(!p_file) {
-                            req.query.Clear();
+                            
                             req.query.Add("str","some-text");
                             req.query.AddBase64("json-b64","{ a: 1, b: 2}");
                             req.query.AddBase64("bin-b64", new byte[] { 0,1,2,3,4,5 });
@@ -639,21 +411,6 @@ namespace UnityExt.Project {
                         }
                         else {
                             
-                            //StreamWriter raw_body = new StreamWriter(new MemoryStream());
-                            //BinaryWriter raw_bin  = new BinaryWriter(raw_body.BaseStream);
-                            //raw_body.WriteLine("This body has no multipart data"); raw_body.Flush();
-                            //raw_body.WriteLine("Just free data around"); raw_body.Flush();
-                            //raw_body.WriteLine(true); raw_body.Flush();
-                            //raw_body.WriteLine("--"); raw_body.Flush();
-                            //raw_bin.Write(10.123f); raw_bin.Flush();
-                            //raw_body.WriteLine("\n--"); raw_body.Flush();
-                            //raw_bin.Write(new byte[] { 65,66,67,68,69 }); raw_bin.Flush();
-                            //raw_body.WriteLine("\n--");                             
-                            //raw_body.Flush();
-                            //raw_body.BaseStream.Position=0;
-                            //req.request.body.stream = raw_body.BaseStream;
-                            
-
                             req.request.body.AddField("str","some-text");
                             req.request.body.AddBase64("json-b64","{ a: 1, b: 2}");
                             req.request.body.AddBase64("bin-b64", new byte[] { 0,1,2,3,4,5 });
@@ -669,18 +426,28 @@ namespace UnityExt.Project {
                             req.request.body.AddJPEG("img-jpg",debugImage);
                             
                         }
-                        
+                        //*/
 
                         req.request.header.Add("X-Game-Version","2.0.0");
 
-                        req.ttl     = 0.5f;
+                        
                         req.timeout = 50f;
-                        WebRequestAttrib f = p_file ? (WebRequestAttrib.FileBuffer | WebRequestAttrib.FileCache) : (WebRequestAttrib.MemoryBuffer | WebRequestAttrib.MemoryBuffer);
+                        WebRequestAttrib f = p_file ? (WebRequestAttrib.FileBuffer | WebRequestAttrib.FileCache) : (WebRequestAttrib.MemoryBuffer | WebRequestAttrib.MemoryCache);
                         req.OnRequestEvent =
                         delegate(WebRequest p_req) {
                             float pu = p_req.request ==null ? 0f : p_req.request.progress;
                             float pd = p_req.response==null ? 0f : p_req.response.progress;                            
                             switch(p_req.state) {
+
+                                case WebRequestState.Create: {
+                                    Debug.Log($"Request [{p_req.url}] Create");
+                                }
+                                break;
+
+                                case WebRequestState.Start: {
+                                    Debug.Log($"Request [{p_req.url}] Start");
+                                }
+                                break;
 
                                 case WebRequestState.DownloadProgress:
                                 case WebRequestState.UploadProgress: {
@@ -702,17 +469,19 @@ namespace UnityExt.Project {
                                 break;
                             }
                         };
-
-                        //req.Get(p_file ? "https://images.hdqwalls.com/download/retro-big-sunset-5k-9t-2048x1152.jpg" : "https://images.hdqwalls.com/wallpapers/big-sur-5k-px.jpg");
-                        //req.Get("https://api-dev.drlgame.com/maps/updated/",f);
+                        
+                        req.ttl     = 0.5f;
+                        //req.Get(p_file ? "https://images.hdqwalls.com/download/retro-big-sunset-5k-9t-2048x1152.jpg" : "https://images.hdqwalls.com/wallpapers/big-sur-5k-px.jpg");                        
                         //req.Get("https://google.com",f);
                         //req.Get("https://file-examples-com.github.io/uploads/2017/11/file_example_OOG_2MG.ogg");
 
                         if(p_file) {
-                            req.Post("https://unityex.requestcatcher.com/",f);
+                            //req.Post("https://unityex.requestcatcher.com/",f);
+                            req.Get("https://api-dev.drlgame.com/maps/updated/",f);
                         }
                         else {
-                            req.Get("https://unityex.requestcatcher.com/",f);
+                            //req.Get("https://unityex.requestcatcher.com/",f);
+                            req.Get("https://api-dev.drlgame.com/maps/updated/",f);
                         }
                         
                     };
@@ -731,13 +500,13 @@ namespace UnityExt.Project {
                             case "run-memory":  run_req(false); break;
                             case "parse-sync": {
                                 if(req==null) break;
-                                Dictionary<string,object> d = req.GetJson<Dictionary<string,object>>();
+                                Dictionary<object,object> d = req.GetJson<Dictionary<object,object>>();
                                 Debug.Log(d.Count);
                             }
                             break;
                             case "parse-async": {
                                 if(req==null) break;
-                                req.GetJsonAsync<Dictionary<string,object>>(delegate(Dictionary<string,object> d) { 
+                                req.GetJsonAsync<Dictionary<object,object>>(delegate(Dictionary<object,object> d) { 
                                     Debug.Log(d.Count);
                                     req = null;
                                 });                                
@@ -761,6 +530,53 @@ namespace UnityExt.Project {
                     Activity.Run("activity-fixed-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at FixedUpdate");  }, ActivityContext.FixedUpdate);
                     Activity.Run("activity-async-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update Async"); }, ActivityContext.Async);
                     Activity.Run("activity-thread",       delegate(Activity a) { Debug.Log("ExampleActivity> Run inside a Thread"); }, ActivityContext.Thread);
+                }
+                break;
+                #endregion
+
+                #region BasicJob
+                //Creates a basic random sum job that perform thousands of operations to emulato app overload.
+                case CaseTypeFlag.BasicJob: {                    
+
+                    //Disable VSync to view FPS difference
+                    QualitySettings.vSyncCount = 0;
+
+                    //Creates the job and runs it
+                    //Watch the 'frameCount' difference between 'sync' and 'async and the FPS as well
+                    //Also watch the profiler
+                    
+                    //List of results logs
+                    List<string> job_results = new List<string>();
+                    //Creates and executes the job
+                    Activity<RandomSumJob> job_a = null;                    
+                    job_a =
+                    Activity<RandomSumJob>.Run(delegate(Activity n) {
+                        Activity<RandomSumJob> a = (Activity<RandomSumJob>)n;
+                        job_results.Add("Complete: Frame["+Time.frameCount+"] "+a.context+" scale["+a.job.scale.ToString("0.0")+"] result["+a.job.result[0].ToString("0.0")+"]");
+                        if(job_results.Count>10) job_results.RemoveAt(0);
+                        return true;
+                    },true);
+                    //Detects the input and log the status
+                    Activity.Run(delegate(Activity a){
+                        //Switch the execution pattern while the job executes or not
+                        if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == ActivityContext.JobAsync ? ActivityContext.Job : ActivityContext.JobAsync;
+                        //Stop the job loop
+                        if(Input.GetKeyUp(KeyCode.S)) { job_a.Stop(); }
+                        //Start the job loop
+                        if(Input.GetKeyUp(KeyCode.D)) { job_a.Start(); job_results.Clear(); }
+                        
+                        ClearLog();
+                        Log($"== Inputs ==");
+                        Log($"[A] Switch Job Context");
+                        Log($"[S] Stop Job");
+                        Log($"[D] Starts Job");
+                        Log($"============");
+                        Log(string.Join("\n",job_results));
+                        ApplyLog();
+
+                        return true;
+                    });
+                    
                 }
                 break;
                 #endregion
@@ -836,53 +652,6 @@ namespace UnityExt.Project {
                         cube_target.transform.localEulerAngles = Vector3.up * rotation_angle;
                         return true;
                     }, ActivityContext.Update);
-                }
-                break;
-                #endregion
-
-                #region BasicJob
-                //Creates a basic random sum job that perform thousands of operations to emulato app overload.
-                case CaseTypeFlag.BasicJob: {                    
-
-                    //Disable VSync to view FPS difference
-                    QualitySettings.vSyncCount = 0;
-
-                    //Creates the job and runs it
-                    //Watch the 'frameCount' difference between 'sync' and 'async and the FPS as well
-                    //Also watch the profiler
-                    
-                    //List of results logs
-                    List<string> job_results = new List<string>();
-                    //Creates and executes the job
-                    Activity<RandomSumJob> job_a = null;                    
-                    job_a =
-                    Activity<RandomSumJob>.Run(delegate(Activity n) {
-                        Activity<RandomSumJob> a = (Activity<RandomSumJob>)n;
-                        job_results.Add("Complete: Frame["+Time.frameCount+"] "+a.context+" scale["+a.job.scale.ToString("0.0")+"] result["+a.job.result[0].ToString("0.0")+"]");
-                        if(job_results.Count>10) job_results.RemoveAt(0);
-                        return true;
-                    },true);
-                    //Detects the input and log the status
-                    Activity.Run(delegate(Activity a){
-                        //Switch the execution pattern while the job executes or not
-                        if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == ActivityContext.JobAsync ? ActivityContext.Job : ActivityContext.JobAsync;
-                        //Stop the job loop
-                        if(Input.GetKeyUp(KeyCode.S)) { job_a.Stop(); }
-                        //Start the job loop
-                        if(Input.GetKeyUp(KeyCode.D)) { job_a.Start(); job_results.Clear(); }
-                        
-                        ClearLog();
-                        Log($"== Inputs ==");
-                        Log($"[A] Switch Job Context");
-                        Log($"[S] Stop Job");
-                        Log($"[D] Starts Job");
-                        Log($"============");
-                        Log(string.Join("\n",job_results));
-                        ApplyLog();
-
-                        return true;
-                    });
-                    
                 }
                 break;
                 #endregion
@@ -1255,6 +1024,59 @@ namespace UnityExt.Project {
                 break;
                 #endregion
 
+                #region Tween Run
+                //Example showing how to create tweens using the static methods of the class                
+                case CaseTypeFlag.TweenRun: {
+                    //Create simple cube
+                    GameObject cube_target = Instantiate(debugCube);
+                    cube_target.transform.parent = content;
+                    cube_target.name = "cube";
+                    //Locals
+                    float speed = 1f;
+                    //Tween instance
+                    Tween tw = null;
+                    //Runs the loop
+                    Activity.Run("tween-run-example",
+                    delegate(Activity a) {
+
+                        ClearLog();
+                        Log("=== Tween Run Methods ===");
+                        
+                        switch(type) {
+
+                            #region TweenRun
+                            case CaseTypeFlag.TweenRun: {
+                                Log("[Q] Scale Up / 2s Delay");
+                                Log("[W] Scale Down / 2s Delay");                                
+                                Log("[E] Scale Up");
+                                Log("[R] Scale Down");                                
+                                Log("[A] Speed -0.025");
+                                Log("[S] Speed +0.025");
+                                Log("[Z] Stop");                                
+                                Log("[X] Pause");
+                                Log("======");         
+                                Log("Speed: ",   false); Log(speed.ToString("0.00")+"x".ToString());                                
+                                if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,2f,Tween.Elastic.OutBig);   tw.speed = 1f; }
+                                if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,2f,Tween.Elastic.OutSmall); tw.speed = 1f; }
+                                if(Input.GetKeyDown(KeyCode.E)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,0f,Tween.Elastic.OutBig);   tw.speed = speed; }
+                                if(Input.GetKeyDown(KeyCode.R)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,0f,Tween.Elastic.OutSmall); tw.speed = speed; }
+                                if(Input.GetKeyDown(KeyCode.A)) { speed -= 0.025f; speed = Mathf.Max(speed,0.025f); }
+                                if(Input.GetKeyDown(KeyCode.S)) { speed += 0.025f; speed = Mathf.Max(speed,0.025f); }                                
+                                if(Input.GetKeyDown(KeyCode.Z)) { Tween.Clear(cube_target.transform); }
+                                if(Input.GetKeyDown(KeyCode.X)) { if(tw!=null) tw.paused = !tw.paused; }
+                            }
+                            break;
+                            #endregion
+
+                        }
+                        ApplyLog();
+                        return true;
+                    }, ActivityContext.Update);
+
+                }
+                break;
+                #endregion
+
                 #region TweenAwait
 
                 //Example showing the await/async capabilities
@@ -1288,58 +1110,6 @@ namespace UnityExt.Project {
                 }
                 break;
 
-                #endregion
-
-                #region Tween Run
-                //Example showing how to create tweens using the static methods of the class                
-                case CaseTypeFlag.TweenRun: {
-                    //Create simple cube
-                    GameObject cube_target = Instantiate(debugCube);
-                    cube_target.transform.parent = content;
-                    cube_target.name = "cube";
-                    //Locals
-                    float speed = 1f;
-                    //Runs the loop
-                    Activity.Run("tween-run-example",
-                    delegate(Activity a) {
-
-                        ClearLog();
-                        Log("=== Tween Run Methods ===");
-                        
-                        switch(type) {
-
-                            #region TweenRun
-                            case CaseTypeFlag.TweenRun: {
-                                Log("[Q] Scale Up / 2s Delay");
-                                Log("[W] Scale Down / 2s Delay");                                
-                                Log("[E] Scale Up");
-                                Log("[R] Scale Down");                                
-                                Log("[A] Speed -0.025");
-                                Log("[S] Speed +0.025");
-                                Log("[Z] Stop");                                
-                                Log("[X] Pause");
-                                Log("======");         
-                                Log("Speed: ",   false); Log(speed.ToString("0.00")+"x".ToString());
-                                Tween tw = null;
-                                if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,2f,Tween.Elastic.OutBig);   tw.speed = 1f; }
-                                if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,2f,Tween.Elastic.OutSmall); tw.speed = 1f; }
-                                if(Input.GetKeyDown(KeyCode.E)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,0f,Tween.Elastic.OutBig);   tw.speed = speed; }
-                                if(Input.GetKeyDown(KeyCode.R)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,0f,Tween.Elastic.OutSmall); tw.speed = speed; }
-                                if(Input.GetKeyDown(KeyCode.A)) { speed -= 0.025f; speed = Mathf.Max(speed,0.025f); }
-                                if(Input.GetKeyDown(KeyCode.S)) { speed += 0.025f; speed = Mathf.Max(speed,0.025f); }                                
-                                if(Input.GetKeyDown(KeyCode.Z)) { Tween.Clear(cube_target.transform); }
-                                if(Input.GetKeyDown(KeyCode.V)) { if(tw!=null) tw.paused = !tw.paused; }
-                            }
-                            break;
-                            #endregion
-
-                        }
-                        ApplyLog();
-                        return true;
-                    }, ActivityContext.Update);
-
-                }
-                break;
                 #endregion
 
                 #region BitStreamBasic
