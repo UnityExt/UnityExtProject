@@ -9,12 +9,8 @@ using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityExt.Core;
-using UnityExt.Core.IO;
-using UnityExt.Core.Animation;
-using UnityExt.Core.Components;
-using BitStream = UnityExt.Core.IO.BitStream;
+using BitStream = UnityExt.Core.BitStream;
 using System.Security.Cryptography;
-using UnityExt.Core.Net;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityEngine.Profiling;
 
@@ -100,7 +96,7 @@ namespace UnityExt.Project {
                 /// Runs the job
                 /// </summary>
                 public void Execute() {
-                    float t = 200f;
+                    float t = 20f;
                     //Super slow stepping
                     for(int i = 0; i<((int)t); i++) {
                         angle[0] += speed[0]*(float)(dt/t);
@@ -344,6 +340,11 @@ namespace UnityExt.Project {
         public Text progressField;
 
         /// <summary>
+        /// Reference of raw image to display texture results
+        /// </summary>
+        public RawImage imageField;
+
+        /// <summary>
         /// Reference to an image to test.
         /// </summary>
         public Texture2D debugImage;
@@ -378,9 +379,8 @@ namespace UnityExt.Project {
             if(titleField) titleField.text = "UnityExt / "+type.ToString();
             switch(type) {
 
-                case CaseTypeFlag.None: { 
+                case CaseTypeFlag.None: {
 
-                    
                     //https://api-dev.drlgame.com/maps/updated/?token=eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9
 
                     WebRequest.InitDataFileSystem();
@@ -440,12 +440,12 @@ namespace UnityExt.Project {
                             switch(p_req.state) {
 
                                 case WebRequestState.Create: {
-                                    Debug.Log($"Request [{p_req.url}] Create");
+                                    Log($"Request [{p_req.url}] Create");
                                 }
                                 break;
 
                                 case WebRequestState.Start: {
-                                    Debug.Log($"Request [{p_req.url}] Start");
+                                    Log($"Request [{p_req.url}] Start");
                                 }
                                 break;
 
@@ -457,24 +457,34 @@ namespace UnityExt.Project {
 
                                 case WebRequestState.Cached:
                                 case WebRequestState.Success: {
-                                    Debug.Log($"{req.state} | cached[{req.cached}] | {req.GetURL()}\n{req.GetURL(true)}");                                    
+                                    Log($"{req.state} | cached[{req.cached}] | {req.GetURL()}\n{req.GetURL(true)}");
+                                    if (imageField.texture) Destroy(imageField.texture);
+                                    Texture2D img = p_req.GetTexture();
+                                    int tw = img ? img.width  : 0;
+                                    int th = img ? img.height : 0;
+                                    float scl = 1024f / (float)img.width;
+                                    int iw = scl <= 0f ? 0 : (int)(tw * scl);
+                                    int ih = scl <= 0f ? 0 : (int)(th * scl);
+                                    imageField.rectTransform.sizeDelta = new Vector2(iw, ih);
+                                    imageField.texture = img;
                                 }
                                 break;
 
                                 case WebRequestState.Cancel:
                                 case WebRequestState.Error:
                                 case WebRequestState.Timeout: {
-                                    Debug.Log($"{req.state} | error[{req.error}]");
+                                    Log($"{req.state} | error[{req.error}]");
                                 }
                                 break;
                             }
                         };
                         
                         req.ttl     = 0.5f;
-                        //req.Get(p_file ? "https://images.hdqwalls.com/download/retro-big-sunset-5k-9t-2048x1152.jpg" : "https://images.hdqwalls.com/wallpapers/big-sur-5k-px.jpg");                        
+                        req.Get(p_file ? "https://images.hdqwalls.com/download/retro-big-sunset-5k-9t-2048x1152.jpg" : "https://images.hdqwalls.com/wallpapers/big-sur-5k-px.jpg");                        
                         //req.Get("https://google.com",f);
                         //req.Get("https://file-examples-com.github.io/uploads/2017/11/file_example_OOG_2MG.ogg");
 
+                        /*
                         if(p_file) {
                             //req.Post("https://unityex.requestcatcher.com/",f);
                             req.Get("https://api-dev.drlgame.com/maps/updated/",f);
@@ -483,7 +493,7 @@ namespace UnityExt.Project {
                             //req.Get("https://unityex.requestcatcher.com/",f);
                             req.Get("https://api-dev.drlgame.com/maps/updated/",f);
                         }
-                        
+                        //*/
                     };
 
                 
@@ -517,6 +527,7 @@ namespace UnityExt.Project {
                             #endif
                             case "cancel": if(req!=null) req.Cancel(); break;
                         }
+                        ApplyLog();
                         return true;
                     });
                     //*/
@@ -664,9 +675,9 @@ namespace UnityExt.Project {
                     //Disable vsync to see fps.
                     QualitySettings.vSyncCount = 0;
                     //Init basic layout data
-                    int cx = 15;
-                    int cz = 15;
-                    int cy = 15;
+                    int cx = 18;
+                    int cz = 18;
+                    int cy = 18;
                     #if UNITY_WEBGL
                     cx=15;
                     cy=15;
