@@ -100,17 +100,18 @@ namespace UnityExt.Project {
                 //Target project
                 $"\"{docfxProjectJson}\"",
                 //Force rebuild
-                "-f",
+                //"-f",
                 //Use /// comment data
-                "--raw",
+                //"--raw",
                 //Logging
-                $"-l {docfxRoot}docfx-metadata-result.log --loglevel Verbose"
+                $"-l {docfxRoot}docfx-metadata-result.log --log Verbose"
             });
 
             m_build_progress = 0f;
             m_build_step     = "Generating Metadata";
 
-            tsk = new System.Threading.Tasks.Task(delegate() { 
+            tsk = new System.Threading.Tasks.Task(delegate() {
+                Debug.Log($"Documentation> Running DocFX Metadata\n{docfxExecutablePath} {string.Join(" ",args)}");
                 proc_info = new System.Diagnostics.ProcessStartInfo(docfxExecutablePath,args);
                 proc_info.UseShellExecute = false;
                 proc_info.CreateNoWindow  = true;
@@ -131,18 +132,19 @@ namespace UnityExt.Project {
                 //Output folder
                 $"-o \"{docfxRoot}\"",
                 //Force to rebuild
-                "-f",     
+                //"-f",     
                 //Template
                 "-t templates/default,templates/unity",
                 //Logging
-                $"-l {docfxRoot}docfx-build-result.log --loglevel Verbose"
+                $"-l {docfxRoot}docfx-build-result.log --log Verbose"
             });
 
             
             m_build_progress = 0.25f;
             m_build_step     = "Building Docs";
 
-            tsk = new System.Threading.Tasks.Task(delegate() {             
+            tsk = new System.Threading.Tasks.Task(delegate() {
+                Debug.Log($"Documentation> Running DocFX Build\n{docfxExecutablePath} {string.Join(" ",args)}");
                 proc_info = new System.Diagnostics.ProcessStartInfo(docfxExecutablePath,args);            
                 proc_info.UseShellExecute = false;
                 proc_info.CreateNoWindow  = true;
@@ -195,6 +197,9 @@ namespace UnityExt.Project {
             //UI wait
             await System.Threading.Tasks.Task.Delay(1500);
 
+            //Assert Build Temp
+            DirectoryInfo build_temp_path_di = new DirectoryInfo(docfxBuildTempPath);
+            if (!build_temp_path_di.Exists) build_temp_path_di.Create();
             //Fetch new build files and move them
             build_files = Directory.GetFiles(docfxBuildTempPath,"*", SearchOption.AllDirectories);
             for(int i = 0; i<build_files.Length; i++) {
