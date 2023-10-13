@@ -13,6 +13,9 @@ using BitStream = UnityExt.Core.BitStream;
 using System.Security.Cryptography;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityEngine.Profiling;
+using System.Linq.Expressions;
+using System;
+using Random = UnityEngine.Random;
 
 #pragma warning disable CS4014
 #pragma warning disable CS1998
@@ -371,8 +374,217 @@ namespace UnityExt.Project {
 
         /// <summary>
         /// Internals.
+        /// </summary>        
+        private List<string>  m_log_lines = new List<string>();
+
+        /*
+        /// <summary>
+        /// Standard Activity extension to handle simple tasks that are queued and completed with/without errors.
         /// </summary>
-        private StringBuilder m_log_sb;
+        public class _TaskActivity : _Activity<TaskState> {
+
+            /// <summary>
+            /// Handler for execution loop
+            /// </summary>
+            new public Action<_TaskActivity> OnExecuteEvent;
+
+            /// <summary>
+            /// Handler for state changes
+            /// </summary>
+            new public Action<_TaskActivity,TaskState,TaskState> OnChangeEvent;
+
+            /// <summary>
+            /// CTOR.
+            /// </summary>
+            /// <param name="p_id"></param>
+            public _TaskActivity(string p_id) : base(p_id) { }
+
+            /// <summary>
+            /// Task removed from the pool
+            /// </summary>
+            protected override void OnStop() {                
+                switch (fsm.state) {
+                    case TaskState.Queue: break;
+                    default: {
+                        fsm.state = TaskState.Stop;
+                        fsm.state = isError ? TaskState.Error : TaskState.Success;
+                    }
+                    break;
+                }
+                base.OnStop();
+            }
+
+            /// <summary>
+            /// Execution loop in the FSM
+            /// </summary>
+            /// <param name="p_state"></param>
+            override protected void OnStateUpdate(TaskState p_state) {                
+            }
+
+            protected override void OnStateChange(TaskState p_from,TaskState p_to) {
+                switch(p_to) {
+                    case TaskState.Start: {
+                        state = TaskState.Run;
+                    }
+                    break;
+                }
+            }
+
+            /// <summary>
+            /// Internal start handler
+            /// </summary>
+            /// <param name="p_editor"></param>
+            /// <param name="p_context"></param>
+            protected override void InternalStart(bool p_editor,ProcessContext p_context) {
+                base.InternalStart(p_editor,p_context);
+                fsm.state = TaskState.Queue;                
+            }
+
+            protected override void OnStart() {
+                state = TaskState.Start;
+            }
+
+            /// <summary>
+            /// Auxiliary Event Calling
+            /// </summary>        
+            protected override void InternalExecuteEvent(TaskState p_state) { if (OnExecuteEvent != null) OnExecuteEvent(this); }
+            protected override void InternalChangeEvent(TaskState p_from,TaskState p_to) { if(OnChangeEvent != null) OnChangeEvent(this,p_from,p_to); }
+
+        }
+
+
+
+        /// <summary>
+        /// Extension of Activity to handle FSM functionalities. It has a simple API to handle state change detection and looping.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        public class _Activity<T> : Activity, _IFSMHandler<T> where T : Enum {
+
+            public T state { get { return fsm == null ? default(T) : fsm.state; } set { if (fsm != null) fsm.state = value; } }
+
+            public Action<_Activity<T>> OnExecuteEvent;
+
+            /// <summary>
+            /// Handler for state changes
+            /// </summary>
+            public Action<_Activity<T>,T,T> OnChangeEvent;
+
+            /// <summary>
+            /// Internals
+            /// </summary>
+            protected _FSM<T> fsm;
+            
+            /// <summary>
+            /// CTOR.
+            /// </summary>
+            /// <param name="p_id"></param>
+            public _Activity(string p_id = "") : base(p_id) {
+                fsm = new _FSM<T>();
+                fsm.handler = this;
+            }
+
+            /// <summary>
+            /// Handler called during execution with the current active state
+            /// </summary>
+            /// <param name="p_state"></param>
+            virtual protected void OnStateUpdate(T p_state) {  }
+
+            /// <summary>
+            /// Handler called upon state changes, returns true|false to "approve" the change or not.
+            /// </summary>
+            /// <param name="p_from"></param>
+            /// <param name="p_to"></param>
+            /// <returns></returns>
+            virtual protected void OnStateChange(T p_from,T p_to) { }
+
+            /// <summary>
+            /// Auxiliary handler to easily call events of any type variation
+            /// </summary>
+            /// <param name="p_state"></param>
+            virtual protected void InternalExecuteEvent(T p_state) { if (OnExecuteEvent != null) OnExecuteEvent(this); }
+
+            /// <summary>
+            /// Auxiliary handler to easily call events of any type variation
+            /// </summary>
+            /// <param name="p_state"></param>
+            virtual protected void InternalChangeEvent(T p_from,T p_to) { if(OnChangeEvent!=null) OnChangeEvent(this,p_from,p_to); }
+
+            /// <summary>
+            /// IFSMHandler internals
+            /// </summary>        
+            void _IFSMHandler<T>.OnState(T p_state) { OnStateUpdate(p_state); InternalExecuteEvent(p_state); }
+            void _IFSMHandler<T>.OnStateChange(T p_from,T p_to) {                
+                OnStateChange(p_from,p_to);
+                InternalChangeEvent(p_from,p_to);                 
+            }
+            
+            /// <summary>
+            /// Proxy execute the FSM
+            /// </summary>        
+            override protected void OnExecute(ProcessContext p_context) { fsm.Refresh(); }
+        }
+
+
+        public interface _IFSMHandler<T> where T : Enum {
+
+            void OnState(T p_state);
+
+            void OnStateChange(T p_from,T p_to);
+
+        }
+
+        public class _FSM<T> where T : Enum {
+
+            public T state {
+                get { return m_state; }
+                set {
+                    if(m_lock_state) {
+                        m_queue_state = value;
+                        return;
+                    }
+                    T f = m_state;
+                    T t = value;
+                    m_queue_state = value;
+                    if (f.ToLong() == t.ToLong()) return;
+                    InternalSetState(t);
+                }
+
+            }
+            private T m_state;
+            private T m_prev_state;
+            private T m_queue_state;
+            private bool m_lock_state;
+
+            public _IFSMHandler<T> handler;
+
+            virtual protected void OnState(T p_state) { Debug.Log($"_FSM> OnState | {p_state}"); }
+
+            virtual protected void OnStateChange(T p_from,T p_to) { Debug.Log($"_FSM> OnStateChange | {p_from} -> {p_to}"); }
+
+            private void InternalSetState(T p_state) {
+                m_lock_state = true;
+                T f = m_prev_state;
+                T s = p_state;
+                if (f.ToLong() != s.ToLong()) {
+                    m_state = s;
+                    OnStateChange(f,s);
+                    if(handler!=null)handler.OnStateChange(f,s);                    
+                }
+                OnState(s);
+                if(handler!=null)handler.OnState(s);
+                //If something changed above, apply
+                m_state = m_queue_state;
+                m_prev_state = m_state;
+                m_lock_state = false;
+            }
+
+            public void Refresh() {
+                InternalSetState(state);                
+            }
+
+        }
+
+        //*/
 
         public void Run(CaseTypeFlag p_type) {
             type = p_type;
@@ -380,6 +592,67 @@ namespace UnityExt.Project {
             switch(type) {
 
                 case CaseTypeFlag.None: {
+
+                    /*
+                    Sys.Timer n = new Sys.Timer("some-timer");
+
+                    n.OnChangeEvent = 
+                    delegate (Sys.Timer p_node,Sys.TimerState p_from,Sys.TimerState p_to) {
+                        Debug.Log($"Activity> Change / {p_from} -> {p_to}");
+                        if(p_to == Sys.TimerState.Step) {
+                            Debug.Log($"Activity>    Change / step: {p_node.step} / {p_node.count}");
+                        }
+                        if (p_to == Sys.TimerState.Success) {
+                            Debug.Log($"Activity>    SUCCESS / step: {p_node.step} / {p_node.count}");
+                        }
+                        return true;
+                    };
+
+                    float t = 0f;
+
+                    
+                    n.OnExecuteEvent =
+                    delegate (Sys.Timer p_node,Sys.TimerState p_state) {                        
+                        switch(p_state) {
+                            case Sys.TimerState.Wait:
+                            case Sys.TimerState.Run: {
+                                t += p_node.deltaTime;
+                                if (t < 0.02f) return;
+                                t = 0f;
+                            }
+                            break;
+                        }
+                        Debug.Log($"Activity> Execute [{p_node.elapsed.ToString("0.00")}] / {p_state} @ {p_node.context} - delay: {p_node.delay} time: {p_node.time.ToString("0.00")} steps: {p_node.step} / {p_node.count} / progress: {p_node.GetProgress()} | {p_node.GetProgress(false)}");                                                
+                    };
+                    
+
+                    n.Set(new Sys.TimerStart { duration = 2f });
+                    n.Start();
+                    
+                    
+
+                    Sys.Process.Start(delegate (Sys.ProcessContext ctx,Sys.Process pp) {
+
+                        if (Input.GetKeyDown(KeyCode.E)) n.Throw(new System.Exception("SOME ERROR"));
+                        if (Input.GetKeyDown(KeyCode.S)) { n.speed = -1; }
+                        if (Input.GetKeyDown(KeyCode.D)) { n.speed =  1; }
+                        if (Input.GetKeyDown(KeyCode.F)) { n.Stop();   }
+                        if (Input.GetKeyDown(KeyCode.R)) { n.Restart(); }
+
+                        return true;
+                    },Sys.ProcessContext.Update);
+
+                    System.Action cb = 
+                    async delegate () {
+                        Debug.Log($">>>>>>>>>>>>>>>>>>>> BEFORE");
+                        await n;
+                        Debug.Log($">>>>>>>>>>>>>>>>>>>>> AFTER: {n.state} / {n.GetProgress()}");
+                    };
+
+                    cb();
+                    //*/
+
+                    break;
 
                     //https://api-dev.drlgame.com/maps/updated/?token=eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9
 
@@ -432,7 +705,7 @@ namespace UnityExt.Project {
 
                         
                         req.timeout = 50f;
-                        WebRequestAttrib f = p_file ? (WebRequestAttrib.FileBuffer | WebRequestAttrib.FileCache) : (WebRequestAttrib.MemoryBuffer | WebRequestAttrib.MemoryCache);
+                        WebRequestFlags f = p_file ? (WebRequestFlags.FileBuffer | WebRequestFlags.FileCache) : (WebRequestFlags.MemoryBuffer | WebRequestFlags.MemoryCache);
                         req.OnRequestEvent =
                         delegate(WebRequest p_req) {
                             float pu = p_req.request ==null ? 0f : p_req.request.progress;
@@ -455,7 +728,7 @@ namespace UnityExt.Project {
                                 }
                                 break;
 
-                                case WebRequestState.Cached:
+                                case WebRequestState.CacheSuccess:
                                 case WebRequestState.Success: {
                                     Log($"{req.state} | cached[{req.cached}] | {req.GetURL()}\n{req.GetURL(true)}");
                                     if (imageField.texture) Destroy(imageField.texture);
@@ -497,7 +770,7 @@ namespace UnityExt.Project {
                     };
 
                 
-                    Activity.Run(delegate(Activity a) { 
+                    Process.Start(delegate(ProcessContext ctx,Process p) { 
                         string cmd = "";                        
                         if(Input.GetKeyDown(KeyCode.Alpha1)) cmd = "run-file";
                         if(Input.GetKeyDown(KeyCode.Alpha2)) cmd = "run-memory";
@@ -536,11 +809,11 @@ namespace UnityExt.Project {
                 #region Basic
                 //Simple activity loop rotating a cube
                 case CaseTypeFlag.Basic:  {                    
-                    Activity.Run("activity-update",       delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update");       }, ActivityContext.Update);
-                    Activity.Run("activity-late-update",  delegate(Activity a) { Debug.Log("ExampleActivity> Run at LateUpdate");   }, ActivityContext.LateUpdate);
-                    Activity.Run("activity-fixed-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at FixedUpdate");  }, ActivityContext.FixedUpdate);
-                    Activity.Run("activity-async-update", delegate(Activity a) { Debug.Log("ExampleActivity> Run at Update Async"); }, ActivityContext.Async);
-                    Activity.Run("activity-thread",       delegate(Activity a) { Debug.Log("ExampleActivity> Run inside a Thread"); }, ActivityContext.Thread);
+                    Process.Start("activity-update",       delegate(ProcessContext ctx, Process p) { Debug.Log("ExampleActivity> Run at Update");       return true; }, ProcessContext.Update);
+                    Process.Start("activity-late-update",  delegate(ProcessContext ctx, Process p) { Debug.Log("ExampleActivity> Run at LateUpdate");   return true; }, ProcessContext.LateUpdate);
+                    Process.Start("activity-fixed-update", delegate(ProcessContext ctx, Process p) { Debug.Log("ExampleActivity> Run at FixedUpdate");  return true; }, ProcessContext.FixedUpdate);
+                  //Process.Start("activity-async-update", delegate(ProcessContext ctx, Process p) { Debug.Log("ExampleActivity> Run at Update Async"); return true; }, ProcessContext.Async);
+                    Process.Start("activity-thread",       delegate(ProcessContext ctx, Process p) { Debug.Log("ExampleActivity> Run inside a Thread"); return true; }, ProcessContext.Thread);
                 }
                 break;
                 #endregion
@@ -548,7 +821,7 @@ namespace UnityExt.Project {
                 #region BasicJob
                 //Creates a basic random sum job that perform thousands of operations to emulato app overload.
                 case CaseTypeFlag.BasicJob: {                    
-
+                    /*
                     //Disable VSync to view FPS difference
                     QualitySettings.vSyncCount = 0;
 
@@ -568,7 +841,7 @@ namespace UnityExt.Project {
                         return true;
                     },true);
                     //Detects the input and log the status
-                    Activity.Run(delegate(Activity a){
+                    Process.Start(delegate(ProcessContext ctx,Process p){
                         //Switch the execution pattern while the job executes or not
                         if(Input.GetKeyUp(KeyCode.A)) job_a.context = job_a.context == ActivityContext.JobAsync ? ActivityContext.Job : ActivityContext.JobAsync;
                         //Stop the job loop
@@ -587,33 +860,58 @@ namespace UnityExt.Project {
 
                         return true;
                     });
-                    
+                    //*/
                 }
                 break;
                 #endregion
 
                 #region Await
                 //Simple activity loop rotating a cube
-                case CaseTypeFlag.Await:  {
-                    float t = 0f;
-                    Activity async_a =
-                    Activity.Run("activity-simple-loop",
-                    delegate(Activity a) { 
-                        t+= Time.deltaTime;
-                        if(t>=3f) { Debug.Log("ExampleActivity> Await / Loop Complete"); return false; }
-                        return true;
-                    }, ActivityContext.Update);
+                case CaseTypeFlag.Await:  {                   
+                    float t  = 0f;                    
+                    //Create the TaskActivity (basic activity that start runs and stop with success/error
+                    TaskActivity async_a = new TaskActivity("activity-simple-loop");
+                    //Activity loop
+                    async_a.OnExecuteEvent =
+                    delegate(TaskActivity a) {
+                        switch (a.state) {
+                            default: break;
+                            case TaskState.Run: {
+                                t += a.deltaTime;
+                                if (t >= 0.5f) {
+                                    Log("Example> Await / Loop Complete");
+                                    a.Stop();
+                                    return;
+                                }
+                            }
+                            break;
+                        }
+                        Log($"Example> OnExecuteEvent [{a.context}] state: {a.state} elapsed: {a.elapsed.ToString("0.00")} dt: {a.deltaTime.ToString("0.00")}");
+                        ApplyLog();
+                    };
+                    //Activity event change event from -> to
+                    async_a.OnChangeEvent =
+                    delegate (TaskActivity a,TaskState sf,TaskState st) {
+                        Log($"Example> OnChangeEvent {sf} -> {st}");
+                        ApplyLog();
+                    };
+                    //Adds the activity to the execution pool
+                    async_a.Start(ProcessContext.Update);
+                    Log("Example> Await / Activity START");
+                    ApplyLog();
                     //Async callback for the example.
-                    System.Action async_cb = 
-                    async delegate() { 
-                        Debug.Log("ExampleActivity> Await / Activity Wait Start");
+                    Action async_cb = 
+                    async delegate() {
+                        Log($"Example> Await / BEFORE 'await' -> Activity Running");
+                        ApplyLog();
                         //Start was tagged as 'async'
                         await async_a;
-                        Debug.Log("ExampleActivity> Await / Activity Wait Complete");
+                        Log($"Example> Await / AFTER 'await' -> Activity Finished!");
+                        ApplyLog();
                     };
                     //Call the method
                     async_cb();                    
-                    Debug.Log("ExampleActivity> Await / After Async Call Break");
+                    
                     
                 }
                 break;
@@ -626,12 +924,12 @@ namespace UnityExt.Project {
                     cube_target.transform.parent = content;
                     cube_target.name = "cube";
                     float rotation_angle = 0f;
-                    Activity.Run("rotator-activity-example",
-                    delegate(Activity a) { 
+                    Process.Start("rotator-activity-example",
+                    delegate(ProcessContext ctx, Process p) { 
                         cube_target.transform.localEulerAngles = Vector3.up * rotation_angle;
                         rotation_angle += Time.deltaTime * 90f;
                         return true;
-                    }, ActivityContext.Update);
+                    });
                 }
                 break;
                 #endregion
@@ -648,21 +946,21 @@ namespace UnityExt.Project {
                     clk.Start();
                     float dt=0f;
                     //Starts the thread to process heavy operation
-                    Activity.Run("rotator-activity-thread",
-                    delegate(Activity a) {                         
+                    Process.Start("rotator-activity-thread",
+                    delegate(ProcessContext ctx, Process p) {                         
                         float clk_t = ((float)clk.ElapsedMilliseconds);
                         if(clk_t<1f) return true;
                         dt = clk_t/1000f;
                         rotation_angle += dt * 90f;
                         clk.Restart();
                         return true;
-                    }, ActivityContext.Thread);
+                    });
                     //Starts the loop that collects whichever results are in from the thread
-                    Activity.Run("rotator-activity-update",
-                    delegate(Activity a) { 
+                    Process.Start("rotator-activity-update",
+                    delegate(ProcessContext ctx, Process p) { 
                         cube_target.transform.localEulerAngles = Vector3.up * rotation_angle;
                         return true;
-                    }, ActivityContext.Update);
+                    });
                 }
                 break;
                 #endregion
@@ -675,8 +973,8 @@ namespace UnityExt.Project {
                     //Disable vsync to see fps.
                     QualitySettings.vSyncCount = 0;
                     //Init basic layout data
-                    int cx = 18;
-                    int cz = 18;
+                    int cx = 17;
+                    int cz = 17;
                     int cy = 18;
                     #if UNITY_WEBGL
                     cx=15;
@@ -697,7 +995,7 @@ namespace UnityExt.Project {
                     List<Rotator> instances = new List<Rotator>();
 
                     //Async create the layout
-                    Activity.Run(delegate(Activity a) {
+                    Process.Start(delegate(ProcessContext ctx,Process pp) {
                         if(k>=max_cubes) {
                             for(int i=0;i<instances.Count;i++) instances[i].enabled=true;
                             return false;
@@ -753,12 +1051,12 @@ namespace UnityExt.Project {
                 //Creates a timer running in loop and track the time.
                 case CaseTypeFlag.TimerBasic: {
                     //Create an unity-clocked timer, that runs for 3s and counts a step during infinite steps.
-                    Timer timer = new Timer("simple-timer",3.0f,0, TimerType.Unity);
+                    Timer timer = new Timer("simple-timer") { duration = 3f,count = 0 } ;
                     //Start with 3s delay
                     float delay = 3f;
-                    timer.Start(delay);
+                    timer.Start(new TimerStart { delay = delay });
                     //Little UI loop
-                    Activity.Run(delegate(Activity a){  
+                    Process.Start(delegate(ProcessContext ctx,Process p){  
                         
                         ClearLog();
                         Log("=== Simple Timer ===");
@@ -769,17 +1067,17 @@ namespace UnityExt.Project {
                         Log("======");
 
                         if(Input.GetKeyUp(KeyCode.A)) timer.Restart();
-                        if(Input.GetKeyUp(KeyCode.S)) timer.RestartStep();
+                        if(Input.GetKeyUp(KeyCode.S)) timer.step=0;
                         if(Input.GetKeyUp(KeyCode.D)) timer.Stop();
-                        if(Input.GetKeyUp(KeyCode.F)) timer.paused = !timer.paused;
+                        if(Input.GetKeyUp(KeyCode.F)) timer.enabled = !timer.enabled;
                         
-                        string t = "#"+timer.step.ToString("00")+" "+timer.elapsed.ToString("0.00")+"s";
+                        string t = $"#{timer.step.ToString("00")} {timer.time.ToString("0.00")}s / {timer.duration.ToString("0.00")}s | {timer.elapsed.ToString("0.00")}s elapsed";
 
-                        if(timer.state == ActivityState.Queued)  t = "Waiting "+timer.delay+"s";
-                        if(timer.state == ActivityState.Stopped) t = "STOPPED";
-                        if(timer.paused) t = "PAUSED / "+t;
+                        if(timer.state == TimerState.Wait   ) t = "Waiting "+timer.delay+"s";
+                        if(timer.state == TimerState.Success) t = "STOPPED";
+                        if(!timer.enabled) t = "PAUSED / "+t;
 
-                        Log($"<size=23>{t}</size>");
+                        Log($"\n<size=20>{t}</size>");
 
                         ApplyLog();
 
@@ -795,45 +1093,37 @@ namespace UnityExt.Project {
                 #region TimerSteps
                 //Creates and run a simple timer.
                 case CaseTypeFlag.TimerSteps: {
-                    //Create a thread-clocked timer, that takes 0.15s each step across 3 steps.
-                    Timer timer = new Timer("simple-timer",0.15f,3, TimerType.System);
-                    //Log list
-                    List<string> log = new List<string>();
-                    //Called each tick.
+                    //Create a thread-clocked timer, that takes 0.1s each step across 4 steps.
+                    Timer timer = new Timer("simple-timer") { duration = 0.2f ,count = 3, delay = 0.2f };
+                    //Called each update
                     timer.OnExecuteEvent = 
                     delegate(Timer t) {
-                        log.Add($"Execute: [{t.step}/{t.count}] [{t.elapsed.ToString("0.00")}/{t.duration.ToString("0.00")}] {t.progress.ToString("0.00")}");
-                        if(log.Count>70) log.RemoveAt(0);
-                        ClearLog();
-                        Log(string.Join("\n",log));
-                        ApplyLog();
-                        return false;
-                    };
-                    //Called per step
-                    timer.OnStepEvent = 
-                    delegate(Timer t) {
-                        log.Add($"Step: [{t.step}/{t.count}] [{t.elapsed.ToString("0.00")}/{t.duration.ToString("0.00")}] {t.progress.ToString("0.00")}");
-                        
-                        //Its possible to change the duration anytime, now we randomize it for the next step.
-                        if(t.step<t.count) t.duration = Random.Range(0.3f,0.4f);
 
-                        if(log.Count>70) log.RemoveAt(0);
-                        ClearLog();
-                        Log(string.Join("\n",log));
+                        TimerState s = t.state;
+
+                        string ss = s.ToString().PadRight(10);
+
+                        switch (s) {
+
+                            case TimerState.Wait: {
+                                Log($"{ss}: elapsed [{t.elapsed.ToString("0.00")} / {t.delay.ToString("0.00")}]");
+                            }
+                            break;
+
+                            default: {
+                                Log($"{ss}: # {t.step}/{t.count} | t: {t.time.ToString("0.00")} / {t.duration.ToString("0.00")} | step-%: {t.progress.ToString("0.00")} total-%: {t.GetProgress().ToString("0.00")}");
+                            }
+                            break;
+                        }
                         ApplyLog();
-                        return true;
                     };
-                    //Called after the last step.
-                    timer.OnCompleteEvent = 
-                    delegate(Timer t) {
-                        log.Add($"Complete: [{t.step}/{t.count}] [{t.elapsed.ToString("0.00")}/{t.duration.ToString("0.00")}] {t.progress.ToString("0.00")}");
-                        if(log.Count>70) log.RemoveAt(0);
-                        ClearLog();
-                        Log(string.Join("\n",log));
-                        ApplyLog();
+                    //State Change from->to
+                    timer.OnChangeEvent =
+                    delegate (Timer t,TimerState sf,TimerState st) {
+                        Log($"Change: {sf} -> {st} | elapsed [{t.elapsed.ToString("0.00")} / {t.delay.ToString("0.00")}]");
                     };
-                    //Starts the timer with 3s of delay.
-                    timer.Start(3f);
+                    //Starts the timer with delay.
+                    timer.Start();
 
                 }
                 break;
@@ -861,8 +1151,8 @@ namespace UnityExt.Project {
                     //Atomic file folder
                     string atomic_clk_folder = Timer.AtomicClockPath;
                     //Little UI loop
-                    Activity atomic_clock_loop =
-                    Activity.Run(delegate(Activity a){  
+                    Process atomic_clock_loop =
+                    Process.Start(delegate(ProcessContext ctx,Process p){  
                         
                         ClearLog();
                         Log("=== Simple Atomic Clock ===");
@@ -913,7 +1203,7 @@ namespace UnityExt.Project {
 
                         return true;
                     });
-                    atomic_clock_loop.id = "atomic-clock-basic";
+                    atomic_clock_loop.name = "atomic-clock-basic";
                 }
                 break;
                 #endregion
@@ -946,15 +1236,16 @@ namespace UnityExt.Project {
                     //pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
                     //rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
                     //Create all tweens setup with 'ids' for cancelling and clamp animation wrapping to stop after completion.
-                    Tween<Color>      color_tween = new Tween<Color>     ("tween-b",  mr.sharedMaterial,"_Color",       Color.green,           Color.red,                        1f,AnimationWrapMode.Clamp,debugCurve);
-                    Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform,     "position",     new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),           1f,AnimationWrapMode.Clamp,Tween.Elastic.OutBig);
-                    Tween<Quaternion> rot_tween   = new Tween<Quaternion>("tween-b",  mr.transform,     "localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),1f,AnimationWrapMode.Clamp,debugCurve);
-                    
+
+                    Tween<Color>      color_tween = new Tween<Color>     ("tween-b",  mr.sharedMaterial,"_Color"        ) { from = Color.green           , to = Color.red            , duration = 1f, curve  = debugCurve };
+                    Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform     ,"position"      ) { from = new Vector3(-1f,0f,0f), to = new Vector3(1f,0f,0f), duration = 1f, easing = Tween.Elastic.OutBig };
+                    Tween<Quaternion> rot_tween   = new Tween<Quaternion>("tween-b",  mr.transform     ,"localRotation" ) { from = Quaternion.identity   , to = Quaternion.AngleAxis(90f,Vector3.up), duration = 1f, curve = debugCurve };
+
                     //Angle to increment and apply sin/cos
                     float angle = 0f;
                     //Runs the loop
-                    Activity.Run("interpolator-example",
-                    delegate(Activity a) {
+                    Process.Start("interpolator-example",
+                    delegate(ProcessContext ctx, Process p) {
 
                         ClearLog();
                         Log("=== Tween & Interpolators ===");
@@ -997,28 +1288,31 @@ namespace UnityExt.Project {
                                 Log("[C] Wrap Pinpong");
                                 Log("[V] Pause");
                                 Log("======");
-                                Log("Wrap: ",    false); Log(color_tween.wrap.ToString());
-                                Log("Speed: ",   false); Log(color_tween.speed.ToString("0.0")+"x".ToString());
-                                Log("Paused: ",  false); Log(color_tween.paused.ToString());
-                                Log("Color: ",   false); Log(color_tween.state.ToString());
-                                Log("Position: ",false); Log(pos_tween.state.ToString());
-                                Log("Rotation: ",false); Log(rot_tween.state.ToString());
-                                
+                                Log($"Wrap:     {color_tween.wrap}");
+                                Log($"Speed:    {color_tween.speed.ToString("0.0")}x");                                
+                                Log($"Paused:   {color_tween.enabled}");
+                                Log($"Color:    {color_tween.state.ToString().PadRight(8)} | # {color_tween.step}");
+                                Log($"Position: {pos_tween.state.ToString().PadRight(8)}   | # {pos_tween.step  }");
+                                Log($"Rotation: {rot_tween.state.ToString().PadRight(8)}   | # {rot_tween.step  }");
+
                                 if(Input.GetKeyDown(KeyCode.Q)) color_tween.Restart();
                                 if(Input.GetKeyDown(KeyCode.W)) pos_tween.Restart();
                                 if(Input.GetKeyDown(KeyCode.E)) rot_tween.Restart();
                                 if(Input.GetKeyDown(KeyCode.A)) { color_tween.speed = pos_tween.speed = (rot_tween.speed -= 0.1f); }
                                 if(Input.GetKeyDown(KeyCode.S)) { color_tween.speed = pos_tween.speed = (rot_tween.speed += 0.1f); }
+                                /*
                                 if(Input.GetKeyDown(KeyCode.D)) { Tween.Clear(); }
                                 if(Input.GetKeyDown(KeyCode.F)) { Tween.Clear(mr.transform); }
                                 if(Input.GetKeyDown(KeyCode.G)) { Tween.Clear(mr.sharedMaterial); }
                                 if(Input.GetKeyDown(KeyCode.H)) { Tween.Clear("tween-a"); }
                                 if(Input.GetKeyDown(KeyCode.J)) { Tween.Clear("tween-b"); }
                                 if(Input.GetKeyDown(KeyCode.K)) { Tween.Clear(mr.transform,"position"); }
+                                //*/
                                 if(Input.GetKeyDown(KeyCode.Z)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Clamp;   }
                                 if(Input.GetKeyDown(KeyCode.X)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Repeat;  }
                                 if(Input.GetKeyDown(KeyCode.C)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Pingpong; }
-                                if(Input.GetKeyDown(KeyCode.V)) { color_tween.paused = pos_tween.paused = (rot_tween.paused = !rot_tween.paused); }
+                                //if(Input.GetKeyDown(KeyCode.V)) { color_tween.paused = pos_tween.paused = (rot_tween.paused = !rot_tween.paused); }
+                                if (Input.GetKeyDown(KeyCode.V)) { color_tween.enabled = pos_tween.enabled = (rot_tween.enabled = !rot_tween.enabled); }
 
                             }
                             break;
@@ -1029,7 +1323,7 @@ namespace UnityExt.Project {
                         ApplyLog();
 
                         return true;
-                    }, ActivityContext.Update);
+                    });
 
                 }
                 break;
@@ -1047,8 +1341,8 @@ namespace UnityExt.Project {
                     //Tween instance
                     Tween tw = null;
                     //Runs the loop
-                    Activity.Run("tween-run-example",
-                    delegate(Activity a) {
+                    Process.Start("tween-run-example",
+                    delegate(ProcessContext ctx, Process p) {
 
                         ClearLog();
                         Log("=== Tween Run Methods ===");
@@ -1066,15 +1360,17 @@ namespace UnityExt.Project {
                                 Log("[Z] Stop");                                
                                 Log("[X] Pause");
                                 Log("======");         
-                                Log("Speed: ",   false); Log(speed.ToString("0.00")+"x".ToString());                                
+                                Log($"Speed: {speed.ToString("0.00")}x");
+                                /*
                                 if(Input.GetKeyDown(KeyCode.Q)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,2f,Tween.Elastic.OutBig);   tw.speed = 1f; }
                                 if(Input.GetKeyDown(KeyCode.W)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,2f,Tween.Elastic.OutSmall); tw.speed = 1f; }
                                 if(Input.GetKeyDown(KeyCode.E)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,0.3f,0f,Tween.Elastic.OutBig);   tw.speed = speed; }
                                 if(Input.GetKeyDown(KeyCode.R)) {tw = Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,0.3f,0f,Tween.Elastic.OutSmall); tw.speed = speed; }
+                                //*/
                                 if(Input.GetKeyDown(KeyCode.A)) { speed -= 0.025f; speed = Mathf.Max(speed,0.025f); }
                                 if(Input.GetKeyDown(KeyCode.S)) { speed += 0.025f; speed = Mathf.Max(speed,0.025f); }                                
-                                if(Input.GetKeyDown(KeyCode.Z)) { Tween.Clear(cube_target.transform); }
-                                if(Input.GetKeyDown(KeyCode.X)) { if(tw!=null) tw.paused = !tw.paused; }
+                                //if(Input.GetKeyDown(KeyCode.Z)) { Tween.Clear(cube_target.transform); }
+                                if(Input.GetKeyDown(KeyCode.X)) { if(tw!=null) tw.enabled = !tw.enabled; }
                             }
                             break;
                             #endregion
@@ -1082,7 +1378,7 @@ namespace UnityExt.Project {
                         }
                         ApplyLog();
                         return true;
-                    }, ActivityContext.Update);
+                    });
 
                 }
                 break;
@@ -1107,13 +1403,13 @@ namespace UnityExt.Project {
                     async 
                     delegate() {                        
                         Debug.Log("ExampleActivity> TweenAwait / Animation Start - Waiting 2s");
-                        await Timer.Delay(2f); 
+                        await Process.Delay(2f); 
                         Debug.Log("ExampleActivity> TweenAwait / Scale Animation 1");
-                        await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,4f,0f,Tween.Elastic.OutBig);                        
+                        //await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,4f,0f,Tween.Elastic.OutBig);                        
                         Debug.Log("ExampleActivity> TweenAwait / Scale Animation 2");
-                        await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,4f,0f,Tween.Elastic.OutSmall);                        
+                        //await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*0.5f,4f,0f,Tween.Elastic.OutSmall);                        
                         Debug.Log("ExampleActivity> TweenAwait / Scale Animation 3");
-                        await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,4f,0f,Tween.Elastic.OutSmall);
+                        //await Tween.Run<Vector3>(cube_target.transform,"localScale",Vector3.one*1.5f,4f,0f,Tween.Elastic.OutSmall);
                         Debug.Log("ExampleActivity> TweenAwait / Animation Completed!");
                     };
                     run_animation();                    
@@ -1168,8 +1464,8 @@ namespace UnityExt.Project {
                     Dictionary<string,object> super_data = null;
                     string json_fp = Application.persistentDataPath+"/json.json";
                     
-                    Activity.Run(
-                    delegate(Activity a) { 
+                    Process.Start(
+                    delegate(ProcessContext ctx, Process p) { 
 
                         ClearLog();
                         Log("=== Json Serialization using Files ===");
@@ -1341,8 +1637,7 @@ namespace UnityExt.Project {
         /// <summary>
         /// CTOR.
         /// </summary>
-        protected void Start() {
-            if(m_log_sb==null) m_log_sb = new StringBuilder();
+        protected void Start() {            
             ClearLog();
             SetProgress(0f);
             Run(type);
@@ -1355,20 +1650,18 @@ namespace UnityExt.Project {
         /// </summary>
         public void ClearLog() {
             if(!consoleField) return;               
-            consoleField.text = "";            
-            m_log_sb.Clear();
+            consoleField.text = "";
+            m_log_lines.Clear();            
         }
 
         /// <summary>
         /// Appends a new log.
         /// </summary>
         /// <param name="p_log"></param>
-        public void Log(string p_log,bool p_newline=true) {
-            if(!consoleField) return;            
-            m_log_sb.Append(p_log);
-            if(p_newline) m_log_sb.Append("\n");
-            //consoleField.text += p_log;
-            //consoleField.text += "\n";
+        public void Log(string p_log) {
+            if(!consoleField) return;
+            m_log_lines.Add(p_log);
+            while (m_log_lines.Count > 76) m_log_lines.RemoveAt(0);
         }
 
         /// <summary>
@@ -1376,8 +1669,7 @@ namespace UnityExt.Project {
         /// </summary>
         public void ApplyLog() {
             if(!consoleField) return;
-            consoleField.text += m_log_sb.ToString();
-            m_log_sb.Clear();
+            consoleField.text = string.Join("\n",m_log_lines);            
         }
 
         /// <summary>
