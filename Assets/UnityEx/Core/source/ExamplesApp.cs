@@ -297,7 +297,9 @@ namespace UnityExt.Project {
             TweenAwait,
             BitStreamBasic,
             JsonFileSerialization,
-            Base64FileSerialization
+            Base64FileSerialization,
+            WebRequestBasic,
+            WebRequestPost
         }
 
         #endregion
@@ -377,215 +379,6 @@ namespace UnityExt.Project {
         /// </summary>        
         private List<string>  m_log_lines = new List<string>();
 
-        /*
-        /// <summary>
-        /// Standard Activity extension to handle simple tasks that are queued and completed with/without errors.
-        /// </summary>
-        public class _TaskActivity : _Activity<TaskState> {
-
-            /// <summary>
-            /// Handler for execution loop
-            /// </summary>
-            new public Action<_TaskActivity> OnExecuteEvent;
-
-            /// <summary>
-            /// Handler for state changes
-            /// </summary>
-            new public Action<_TaskActivity,TaskState,TaskState> OnChangeEvent;
-
-            /// <summary>
-            /// CTOR.
-            /// </summary>
-            /// <param name="p_id"></param>
-            public _TaskActivity(string p_id) : base(p_id) { }
-
-            /// <summary>
-            /// Task removed from the pool
-            /// </summary>
-            protected override void OnStop() {                
-                switch (fsm.state) {
-                    case TaskState.Queue: break;
-                    default: {
-                        fsm.state = TaskState.Stop;
-                        fsm.state = isError ? TaskState.Error : TaskState.Success;
-                    }
-                    break;
-                }
-                base.OnStop();
-            }
-
-            /// <summary>
-            /// Execution loop in the FSM
-            /// </summary>
-            /// <param name="p_state"></param>
-            override protected void OnStateUpdate(TaskState p_state) {                
-            }
-
-            protected override void OnStateChange(TaskState p_from,TaskState p_to) {
-                switch(p_to) {
-                    case TaskState.Start: {
-                        state = TaskState.Run;
-                    }
-                    break;
-                }
-            }
-
-            /// <summary>
-            /// Internal start handler
-            /// </summary>
-            /// <param name="p_editor"></param>
-            /// <param name="p_context"></param>
-            protected override void InternalStart(bool p_editor,ProcessContext p_context) {
-                base.InternalStart(p_editor,p_context);
-                fsm.state = TaskState.Queue;                
-            }
-
-            protected override void OnStart() {
-                state = TaskState.Start;
-            }
-
-            /// <summary>
-            /// Auxiliary Event Calling
-            /// </summary>        
-            protected override void InternalExecuteEvent(TaskState p_state) { if (OnExecuteEvent != null) OnExecuteEvent(this); }
-            protected override void InternalChangeEvent(TaskState p_from,TaskState p_to) { if(OnChangeEvent != null) OnChangeEvent(this,p_from,p_to); }
-
-        }
-
-
-
-        /// <summary>
-        /// Extension of Activity to handle FSM functionalities. It has a simple API to handle state change detection and looping.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        public class _Activity<T> : Activity, _IFSMHandler<T> where T : Enum {
-
-            public T state { get { return fsm == null ? default(T) : fsm.state; } set { if (fsm != null) fsm.state = value; } }
-
-            public Action<_Activity<T>> OnExecuteEvent;
-
-            /// <summary>
-            /// Handler for state changes
-            /// </summary>
-            public Action<_Activity<T>,T,T> OnChangeEvent;
-
-            /// <summary>
-            /// Internals
-            /// </summary>
-            protected _FSM<T> fsm;
-            
-            /// <summary>
-            /// CTOR.
-            /// </summary>
-            /// <param name="p_id"></param>
-            public _Activity(string p_id = "") : base(p_id) {
-                fsm = new _FSM<T>();
-                fsm.handler = this;
-            }
-
-            /// <summary>
-            /// Handler called during execution with the current active state
-            /// </summary>
-            /// <param name="p_state"></param>
-            virtual protected void OnStateUpdate(T p_state) {  }
-
-            /// <summary>
-            /// Handler called upon state changes, returns true|false to "approve" the change or not.
-            /// </summary>
-            /// <param name="p_from"></param>
-            /// <param name="p_to"></param>
-            /// <returns></returns>
-            virtual protected void OnStateChange(T p_from,T p_to) { }
-
-            /// <summary>
-            /// Auxiliary handler to easily call events of any type variation
-            /// </summary>
-            /// <param name="p_state"></param>
-            virtual protected void InternalExecuteEvent(T p_state) { if (OnExecuteEvent != null) OnExecuteEvent(this); }
-
-            /// <summary>
-            /// Auxiliary handler to easily call events of any type variation
-            /// </summary>
-            /// <param name="p_state"></param>
-            virtual protected void InternalChangeEvent(T p_from,T p_to) { if(OnChangeEvent!=null) OnChangeEvent(this,p_from,p_to); }
-
-            /// <summary>
-            /// IFSMHandler internals
-            /// </summary>        
-            void _IFSMHandler<T>.OnState(T p_state) { OnStateUpdate(p_state); InternalExecuteEvent(p_state); }
-            void _IFSMHandler<T>.OnStateChange(T p_from,T p_to) {                
-                OnStateChange(p_from,p_to);
-                InternalChangeEvent(p_from,p_to);                 
-            }
-            
-            /// <summary>
-            /// Proxy execute the FSM
-            /// </summary>        
-            override protected void OnExecute(ProcessContext p_context) { fsm.Refresh(); }
-        }
-
-
-        public interface _IFSMHandler<T> where T : Enum {
-
-            void OnState(T p_state);
-
-            void OnStateChange(T p_from,T p_to);
-
-        }
-
-        public class _FSM<T> where T : Enum {
-
-            public T state {
-                get { return m_state; }
-                set {
-                    if(m_lock_state) {
-                        m_queue_state = value;
-                        return;
-                    }
-                    T f = m_state;
-                    T t = value;
-                    m_queue_state = value;
-                    if (f.ToLong() == t.ToLong()) return;
-                    InternalSetState(t);
-                }
-
-            }
-            private T m_state;
-            private T m_prev_state;
-            private T m_queue_state;
-            private bool m_lock_state;
-
-            public _IFSMHandler<T> handler;
-
-            virtual protected void OnState(T p_state) { Debug.Log($"_FSM> OnState | {p_state}"); }
-
-            virtual protected void OnStateChange(T p_from,T p_to) { Debug.Log($"_FSM> OnStateChange | {p_from} -> {p_to}"); }
-
-            private void InternalSetState(T p_state) {
-                m_lock_state = true;
-                T f = m_prev_state;
-                T s = p_state;
-                if (f.ToLong() != s.ToLong()) {
-                    m_state = s;
-                    OnStateChange(f,s);
-                    if(handler!=null)handler.OnStateChange(f,s);                    
-                }
-                OnState(s);
-                if(handler!=null)handler.OnState(s);
-                //If something changed above, apply
-                m_state = m_queue_state;
-                m_prev_state = m_state;
-                m_lock_state = false;
-            }
-
-            public void Refresh() {
-                InternalSetState(state);                
-            }
-
-        }
-
-        //*/
-
         public void Run(CaseTypeFlag p_type) {
             type = p_type;
             if(titleField) titleField.text = "UnityExt / "+type.ToString();
@@ -593,218 +386,8 @@ namespace UnityExt.Project {
 
                 case CaseTypeFlag.None: {
 
-                    /*
-                    Sys.Timer n = new Sys.Timer("some-timer");
-
-                    n.OnChangeEvent = 
-                    delegate (Sys.Timer p_node,Sys.TimerState p_from,Sys.TimerState p_to) {
-                        Debug.Log($"Activity> Change / {p_from} -> {p_to}");
-                        if(p_to == Sys.TimerState.Step) {
-                            Debug.Log($"Activity>    Change / step: {p_node.step} / {p_node.count}");
-                        }
-                        if (p_to == Sys.TimerState.Success) {
-                            Debug.Log($"Activity>    SUCCESS / step: {p_node.step} / {p_node.count}");
-                        }
-                        return true;
-                    };
-
-                    float t = 0f;
-
-                    
-                    n.OnExecuteEvent =
-                    delegate (Sys.Timer p_node,Sys.TimerState p_state) {                        
-                        switch(p_state) {
-                            case Sys.TimerState.Wait:
-                            case Sys.TimerState.Run: {
-                                t += p_node.deltaTime;
-                                if (t < 0.02f) return;
-                                t = 0f;
-                            }
-                            break;
-                        }
-                        Debug.Log($"Activity> Execute [{p_node.elapsed.ToString("0.00")}] / {p_state} @ {p_node.context} - delay: {p_node.delay} time: {p_node.time.ToString("0.00")} steps: {p_node.step} / {p_node.count} / progress: {p_node.GetProgress()} | {p_node.GetProgress(false)}");                                                
-                    };
-                    
-
-                    n.Set(new Sys.TimerStart { duration = 2f });
-                    n.Start();
-                    
-                    
-
-                    Sys.Process.Start(delegate (Sys.ProcessContext ctx,Sys.Process pp) {
-
-                        if (Input.GetKeyDown(KeyCode.E)) n.Throw(new System.Exception("SOME ERROR"));
-                        if (Input.GetKeyDown(KeyCode.S)) { n.speed = -1; }
-                        if (Input.GetKeyDown(KeyCode.D)) { n.speed =  1; }
-                        if (Input.GetKeyDown(KeyCode.F)) { n.Stop();   }
-                        if (Input.GetKeyDown(KeyCode.R)) { n.Restart(); }
-
-                        return true;
-                    },Sys.ProcessContext.Update);
-
-                    System.Action cb = 
-                    async delegate () {
-                        Debug.Log($">>>>>>>>>>>>>>>>>>>> BEFORE");
-                        await n;
-                        Debug.Log($">>>>>>>>>>>>>>>>>>>>> AFTER: {n.state} / {n.GetProgress()}");
-                    };
-
-                    cb();
-                    //*/
-
-                    break;
-
-                    //https://api-dev.drlgame.com/maps/updated/?token=eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9
-
-                    WebRequest.InitDataFileSystem();
-                    WebRequestCache.Clear();
-                    
-                    
-                    WebRequest req = null;
-
-                    System.Action<bool> run_req =
-                    async
-                    delegate(bool p_file) {
-
-                        req = new WebRequest(); 
-                        req.query.Clear();
-                        req.query.Add("token","eyJzdGVhbUlkIjoiNzY1NjExOTgwMDQxOTY3MjIiLCJ4YnVpZCI6bnVsbCwicGxheXN0YXRpb25JZCI6bnVsbCwidGlja2V0IjoiIiwib3MiOiIiLCJ2ZXJzaW9uIjoiMy45LjM1OWQucmxzLXdpbiJ9");
-                        /*
-                        if(!p_file) {
-                            
-                            req.query.Add("str","some-text");
-                            req.query.AddBase64("json-b64","{ a: 1, b: 2}");
-                            req.query.AddBase64("bin-b64", new byte[] { 0,1,2,3,4,5 });
-                            req.query.Add("table",new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f} });
-                            req.query.Add("list", new object[] { "a",1 ,"b","txt","c",2.345f });
-                            req.query.Add("","list-noidx","0");
-                            req.query.Add("","list-noidx","1");
-                            req.query.Add("","list-noidx","2");
-                            req.query.Add("","list-noidx","3");
-                        }
-                        else {
-                            
-                            req.request.body.AddField("str","some-text");
-                            req.request.body.AddBase64("json-b64","{ a: 1, b: 2}");
-                            req.request.body.AddBase64("bin-b64", new byte[] { 0,1,2,3,4,5 });
-                            req.request.body.AddFields("table",new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f} });
-                            req.request.body.AddFields("list", new object[] { "a",1 ,"b","txt","c",2.345f });
-                            req.request.body.AddField("","list-noidx","0");
-                            req.request.body.AddField("","list-noidx","1");
-                            req.request.body.AddField("","list-noidx","2");
-                            req.request.body.AddField("","list-noidx","3");
-                            req.request.body.AddJson("json-obj", new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f} });
-                            req.request.body.AddJson("json-arr", new object[] { "a",1 ,"b","txt","c",2.345f });
-                            req.request.body.AddPNG("img-png", debugImage);
-                            req.request.body.AddJPEG("img-jpg",debugImage);
-                            
-                        }
-                        //*/
-
-                        req.request.header.Add("X-Game-Version","2.0.0");
-
-                        
-                        req.timeout = 50f;
-                        WebRequestFlags f = p_file ? (WebRequestFlags.FileBuffer | WebRequestFlags.FileCache) : (WebRequestFlags.MemoryBuffer | WebRequestFlags.MemoryCache);
-                        req.OnRequestEvent =
-                        delegate(WebRequest p_req) {
-                            float pu = p_req.request ==null ? 0f : p_req.request.progress;
-                            float pd = p_req.response==null ? 0f : p_req.response.progress;                            
-                            switch(p_req.state) {
-
-                                case WebRequestState.Create: {
-                                    Log($"Request [{p_req.url}] Create");
-                                }
-                                break;
-
-                                case WebRequestState.Start: {
-                                    Log($"Request [{p_req.url}] Start");
-                                }
-                                break;
-
-                                case WebRequestState.DownloadProgress:
-                                case WebRequestState.UploadProgress: {
-                                    SetProgress(p_req.progress);
-                                }
-                                break;
-
-                                case WebRequestState.CacheSuccess:
-                                case WebRequestState.Success: {
-                                    Log($"{req.state} | cached[{req.cached}] | {req.GetURL()}\n{req.GetURL(true)}");
-                                    if (imageField.texture) Destroy(imageField.texture);
-                                    Texture2D img = p_req.GetTexture();
-                                    int tw = img ? img.width  : 0;
-                                    int th = img ? img.height : 0;
-                                    float scl = 1024f / (float)img.width;
-                                    int iw = scl <= 0f ? 0 : (int)(tw * scl);
-                                    int ih = scl <= 0f ? 0 : (int)(th * scl);
-                                    imageField.rectTransform.sizeDelta = new Vector2(iw, ih);
-                                    imageField.texture = img;
-                                }
-                                break;
-
-                                case WebRequestState.Cancel:
-                                case WebRequestState.Error:
-                                case WebRequestState.Timeout: {
-                                    Log($"{req.state} | error[{req.error}]");
-                                }
-                                break;
-                            }
-                        };
-                        
-                        req.ttl     = 0.5f;
-                        req.Get(p_file ? "https://images.hdqwalls.com/download/retro-big-sunset-5k-9t-2048x1152.jpg" : "https://images.hdqwalls.com/wallpapers/big-sur-5k-px.jpg");                        
-                        //req.Get("https://google.com",f);
-                        //req.Get("https://file-examples-com.github.io/uploads/2017/11/file_example_OOG_2MG.ogg");
-
-                        /*
-                        if(p_file) {
-                            //req.Post("https://unityex.requestcatcher.com/",f);
-                            req.Get("https://api-dev.drlgame.com/maps/updated/",f);
-                        }
-                        else {
-                            //req.Get("https://unityex.requestcatcher.com/",f);
-                            req.Get("https://api-dev.drlgame.com/maps/updated/",f);
-                        }
-                        //*/
-                    };
-
-                
-                    Process.Start(delegate(ProcessContext ctx,Process p) { 
-                        string cmd = "";                        
-                        if(Input.GetKeyDown(KeyCode.Alpha1)) cmd = "run-file";
-                        if(Input.GetKeyDown(KeyCode.Alpha2)) cmd = "run-memory";
-                        if(Input.GetKeyDown(KeyCode.Alpha3)) cmd = "parse-sync";
-                        if(Input.GetKeyDown(KeyCode.Alpha4)) cmd = "parse-async";
-                        if(Input.GetKeyDown(KeyCode.Alpha0)) cmd = "open";
-                        if(Input.GetKeyDown(KeyCode.Alpha9)) cmd = "cancel";
-                        switch(cmd) {
-                            case "run-file":    run_req(true);  break;
-                            case "run-memory":  run_req(false); break;
-                            case "parse-sync": {
-                                if(req==null) break;
-                                Dictionary<object,object> d = req.GetJson<Dictionary<object,object>>();
-                                Debug.Log(d.Count);
-                            }
-                            break;
-                            case "parse-async": {
-                                if(req==null) break;
-                                req.GetJsonAsync<Dictionary<object,object>>(delegate(Dictionary<object,object> d) { 
-                                    Debug.Log(d.Count);
-                                    req = null;
-                                });                                
-                            }
-                            break;
-                            #if UNITY_EDITOR
-                            case "open": UnityEditor.EditorUtility.RevealInFinder(WebRequest.DataPath); break;
-                            #endif
-                            case "cancel": if(req!=null) req.Cancel(); break;
-                        }
-                        ApplyLog();
-                        return true;
-                    });
-                    //*/
-                } break;
+                }
+                break;
 
                 #region Basic
                 //Simple activity loop rotating a cube
@@ -1225,18 +808,10 @@ namespace UnityExt.Project {
                     mr.sharedMaterial = Instantiate(mr.sharedMaterial);
                     mr.sharedMaterial.name = mn;
                     //Create all interpolators
-                    //Interpolator<Color>      color_lerp = Interpolator.Get<Color>();
-                    //Interpolator<Vector3>    pos_lerp   = Interpolator.Get<Vector3>();
-                    //Interpolator<Quaternion> rot_lerp   = Interpolator.Get<Quaternion>();
                     PropertyInterpolator<Color>      color_lerp = new PropertyInterpolator<Color>     (mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);
                     PropertyInterpolator<Vector3>    pos_lerp   = new PropertyInterpolator<Vector3>   (mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);
-                    PropertyInterpolator<Quaternion> rot_lerp   = new PropertyInterpolator<Quaternion>(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
-                    //Set interpolation range and easing
-                    //color_lerp.Set(mr.sharedMaterial,"_Color",Color.red,Color.green,debugCurve);                    
-                    //pos_lerp.Set(mr.transform,"position",new Vector3(-1f,0f,0f),new Vector3( 1f,0f,0f),debugCurve);                          
-                    //rot_lerp.Set(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);
+                    PropertyInterpolator<Quaternion> rot_lerp   = new PropertyInterpolator<Quaternion>(mr.transform,"localRotation",Quaternion.identity,Quaternion.AngleAxis(90f,Vector3.up),debugCurve);                    
                     //Create all tweens setup with 'ids' for cancelling and clamp animation wrapping to stop after completion.
-
                     Tween<Color>      color_tween = new Tween<Color>     ("tween-b",  mr.sharedMaterial,"_Color"        ) { from = Color.green           , to = Color.red            , duration = 1f, curve  = debugCurve };
                     Tween<Vector3>    pos_tween   = new Tween<Vector3>   ("tween-a",  mr.transform     ,"position"      ) { from = new Vector3(-1f,0f,0f), to = new Vector3(1f,0f,0f), duration = 1f, easing = Tween.Elastic.OutBig };
                     Tween<Quaternion> rot_tween   = new Tween<Quaternion>("tween-b",  mr.transform     ,"localRotation" ) { from = Quaternion.identity   , to = Quaternion.AngleAxis(90f,Vector3.up), duration = 1f, curve = debugCurve };
@@ -1300,18 +875,14 @@ namespace UnityExt.Project {
                                 if(Input.GetKeyDown(KeyCode.E)) rot_tween.Restart();
                                 if(Input.GetKeyDown(KeyCode.A)) { color_tween.speed = pos_tween.speed = (rot_tween.speed -= 0.1f); }
                                 if(Input.GetKeyDown(KeyCode.S)) { color_tween.speed = pos_tween.speed = (rot_tween.speed += 0.1f); }
-                                /*
-                                if(Input.GetKeyDown(KeyCode.D)) { Tween.Clear(); }
-                                if(Input.GetKeyDown(KeyCode.F)) { Tween.Clear(mr.transform); }
-                                if(Input.GetKeyDown(KeyCode.G)) { Tween.Clear(mr.sharedMaterial); }
-                                if(Input.GetKeyDown(KeyCode.H)) { Tween.Clear("tween-a"); }
-                                if(Input.GetKeyDown(KeyCode.J)) { Tween.Clear("tween-b"); }
-                                if(Input.GetKeyDown(KeyCode.K)) { Tween.Clear(mr.transform,"position"); }
+                                
+                                if(Input.GetKeyDown(KeyCode.D)) { color_tween.Stop(); pos_tween.Stop(); rot_tween.Stop(); }
+                                if(Input.GetKeyDown(KeyCode.F)) { pos_tween.Stop(); rot_tween.Stop(); }
+                                if(Input.GetKeyDown(KeyCode.G)) { color_tween.Stop(); }                                
                                 //*/
                                 if(Input.GetKeyDown(KeyCode.Z)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Clamp;   }
                                 if(Input.GetKeyDown(KeyCode.X)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Repeat;  }
-                                if(Input.GetKeyDown(KeyCode.C)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Pingpong; }
-                                //if(Input.GetKeyDown(KeyCode.V)) { color_tween.paused = pos_tween.paused = (rot_tween.paused = !rot_tween.paused); }
+                                if(Input.GetKeyDown(KeyCode.C)) { color_tween.wrap=pos_tween.wrap=rot_tween.wrap=AnimationWrapMode.Pingpong; }                                
                                 if (Input.GetKeyDown(KeyCode.V)) { color_tween.enabled = pos_tween.enabled = (rot_tween.enabled = !rot_tween.enabled); }
 
                             }
@@ -1631,6 +1202,145 @@ namespace UnityExt.Project {
 
                 #endregion
 
+                #region WebRequestBasic
+                case CaseTypeFlag.WebRequestBasic: {
+                    //Init the Data File System
+                    WebRequest.InitDataFileSystem();
+                    //Clear any existing cache (disabled to show caching features)
+                    //WebRequestCache.Clear();
+                    //Create the WebRequest
+                    WebRequest req = new WebRequest("image-loader") {
+                        ttl     = 0.5f, //Cache TimeToLive in Minutes (15s)
+                        timeout =   10f //Timeout in seconds
+                    };
+                    ///WebRequest execution loop with extensive states for tracking
+                    req.OnExecuteEvent =
+                    delegate (WebRequest p_request) {
+                        //Ignore Processing as its just looping waiting for other mid steps
+                        if (p_request.state == WebRequestState.Processing) return;
+                        //Request Progress == Upload
+                        float pu = p_request.request  == null ? 0f : p_request.request.progress;
+                        //Response Progress == Download
+                        float pd = p_request.response == null ? 0f : p_request.response.progress;
+                        Log($"State: {p_request.state} | d: {pd.ToString("0.00")} u: {pu.ToString("0.00")}");
+                        switch (p_request.state) {
+
+                            case WebRequestState.Create: {
+                                Log($"  URL: [{p_request.url}]");
+                            }
+                            break;
+
+                            case WebRequestState.DownloadProgress: {
+                                SetProgress(p_request.progress);
+                            }
+                            break;
+                            case WebRequestState.UploadProgress: {
+                                SetProgress(p_request.progress);
+                            }
+                            break;
+
+                            case WebRequestState.Success: {
+                                Log($"  CACHED: {p_request.cached}\n  URL: {p_request.GetURL()}\n  URL FULL: {p_request.GetURL(true)}");                                                                                              
+                                if (imageField.texture) Destroy(imageField.texture);
+                                Texture2D img = p_request.GetTexture();
+                                int tw = img ? img.width  : 0;
+                                int th = img ? img.height : 0;
+                                float scl = 1024f / (float)img.width;
+                                int iw = scl <= 0f ? 0 : (int)(tw * scl);
+                                int ih = scl <= 0f ? 0 : (int)(th * scl);
+                                imageField.rectTransform.sizeDelta = new Vector2(iw, ih);
+                                imageField.texture = img;                                                                
+                            }
+                            break;
+
+                            case WebRequestState.Error: {
+                                Log($"  ERROR:{p_request.exception}");
+                            }
+                            break;
+                        }                        
+                    };
+                    //Loop to refresh logs
+                    Process.Start(delegate (ProcessContext p_ctx,Process p_proc) { ApplyLog(); return true; },ProcessContext.Update);
+                    //Configuration flags
+                    WebRequestFlags req_flags = WebRequestFlags.FileBuffer | WebRequestFlags.FileCache; //Buffer and Cache Policies (can be using RAM or Disk)
+                    //Perform a GET operation of a big image
+                    req.Get("https://edmullen.net/test/rc.jpg",req_flags);
+                }
+                break;
+                #endregion
+
+                case CaseTypeFlag.WebRequestPost: {
+                    //Init the Data File System
+                    WebRequest.InitDataFileSystem();
+                    //Clear any existing cache (disabled to show caching features)
+                    //WebRequestCache.Clear();
+                    //Create the WebRequest
+                    WebRequest req = new WebRequest("image-loader") {
+                        ttl     = 0.5f, //Cache TimeToLive in Minutes (15s)
+                        timeout = 10f   //Timeout in seconds
+                    };
+                    //Populate the Request Body with lots of supported data
+                    req.request.body.AddField ("str","some-text");
+                    req.request.body.AddBase64("json-b64","{ a: 1, b: 2}");
+                    req.request.body.AddBase64("bin-b64",new byte[] { 0,1,2,3,4,5 });
+                    req.request.body.AddFields("table",new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f } });
+                    req.request.body.AddFields("list",new object[] { "a",1,"b","txt","c",2.345f });
+                    req.request.body.AddField ("","list-noidx","0");
+                    req.request.body.AddField ("","list-noidx","1");
+                    req.request.body.AddField ("","list-noidx","2");
+                    req.request.body.AddField ("","list-noidx","3");
+                    req.request.body.AddJson  ("json-obj",new Dictionary<string,object>() { { "a",1 },{ "b","txt" },{ "c",2.345f } });
+                    req.request.body.AddJson  ("json-arr",new object[] { "a",1,"b","txt","c",2.345f });
+                    req.request.body.AddPNG   ("img-png",debugImage);
+                    req.request.body.AddJPEG  ("img-jpg",debugImage);
+                    ///WebRequest execution loop with extensive states for tracking
+                    req.OnExecuteEvent =
+                    delegate (WebRequest p_request) {
+                        //Ignore Processing as its just looping waiting for other mid steps
+                        if (p_request.state == WebRequestState.Processing) return;
+                        //Request Progress == Upload
+                        float pu = p_request.request == null ? 0f : p_request.request.progress;
+                        //Response Progress == Download
+                        float pd = p_request.response == null ? 0f : p_request.response.progress;
+                        Log($"State: {p_request.state} | d: {pd.ToString("0.00")} u: {pu.ToString("0.00")}");
+                        switch (p_request.state) {
+
+                            case WebRequestState.Create: {
+                                Log($"  URL: [{p_request.url}]");
+                            }
+                            break;
+
+                            case WebRequestState.DownloadProgress: {
+                                SetProgress(p_request.progress);
+                            }
+                            break;
+                            case WebRequestState.UploadProgress: {
+                                SetProgress(p_request.progress);
+                            }
+                            break;
+
+                            case WebRequestState.Success: {
+                                Log($"=== PAYLOAD ===");
+                                Log(p_request.GetString("<null>"));
+                                Log($"===============");
+                            }
+                            break;
+
+                            case WebRequestState.Error: {
+                                Log($"  ERROR:{p_request.exception}");
+                            }
+                            break;
+                        }
+                    };
+                    //Loop to refresh logs
+                    Process.Start(delegate (ProcessContext p_ctx,Process p_proc) { ApplyLog(); return true; },ProcessContext.Update);
+                    //Configuration flags
+                    WebRequestFlags req_flags = WebRequestFlags.FileBuffer | WebRequestFlags.FileCache; //Buffer and Cache Policies (can be using RAM or Disk)
+                    //Perform a POST operation and track the result in the 'request catcher' tool
+                    req.Post("https://unityex.requestcatcher.com/",req_flags);
+                }
+                break;
+
             }
         }
 
@@ -1660,8 +1370,10 @@ namespace UnityExt.Project {
         /// <param name="p_log"></param>
         public void Log(string p_log) {
             if(!consoleField) return;
-            m_log_lines.Add(p_log);
-            while (m_log_lines.Count > 76) m_log_lines.RemoveAt(0);
+            lock (m_log_lines) {
+                m_log_lines.Add(p_log);
+                while (m_log_lines.Count > 90) m_log_lines.RemoveAt(0);
+            }
         }
 
         /// <summary>
@@ -1669,7 +1381,9 @@ namespace UnityExt.Project {
         /// </summary>
         public void ApplyLog() {
             if(!consoleField) return;
-            consoleField.text = string.Join("\n",m_log_lines);            
+            lock (m_log_lines) {
+                consoleField.text = string.Join("\n",m_log_lines);
+            }
         }
 
         /// <summary>
