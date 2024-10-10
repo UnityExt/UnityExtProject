@@ -463,7 +463,7 @@ namespace UnityExt.Project {
                                 t += a.deltaTime;
                                 if (t >= 0.5f) {
                                     Log("Example> Await / Loop Complete");
-                                    a.Stop();
+                                    a.Complete();
                                     return;
                                 }
                             }
